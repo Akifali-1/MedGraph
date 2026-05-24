@@ -1,0 +1,15 @@
+--- PubMed Abstract: PMID-3458921 ---
+Title: Molecular pathways of acetylsalicylic acid (Aspirin) in Danio rerio cardiac injury models
+Abstract: In this study, we investigated the effect of acetylsalicylic acid on myocardial regeneration in zebrafish (Danio rerio) models. Following cryoinjury, zebrafish were treated with varying concentrations of aspirin. Histological analysis showed alteration in fibrotic tissue deposition, suggesting potential pathways of action through cox-1 inhibition in lower vertebrates. These results have no direct clinical correlation but clarify non-mammalian cardiac pathways.
+
+--- PubMed Abstract: PMID-9928131 ---
+Title: Association of coffee consumption with self-reported transient heart palpitations in a cohort of 50 healthy adults
+Abstract: We conducted an observational study of 50 healthy adults logging daily caffeine intake. Five participants reported transient palpitations following high consumption of espresso. While statistically insignificant, the study highlights a potential minor risk of caffeine-induced palpitations under non-controlled conditions. Further trials are necessary to rule out confounding factors.
+
+--- PubMed Abstract: PMID-8812903 ---
+Title: Observational study on dietary Vitamin K intake and clotting profiles in a localized rural community
+Abstract: Clotting profiles of 120 adult individuals in a localized agricultural community were analyzed in relation to seasonal green leafy vegetable consumption. Variations in INR values did not correlate significantly with estimated dietary vitamin K levels. Confounding factors included age and underlying metabolic conditions.
+
+--- PubMed Abstract: PMID-1204891 ---
+Title: Pre-clinical evaluation of novel beta-blocker analogs in hypertensive rodent models
+Abstract: Novel beta-receptor antagonists were synthesized and evaluated in spontaneously hypertensive rats. Compound 4b demonstrated a 15% reduction in mean arterial pressure compared to control groups. Long-term toxicology and human safety profiles remain completely uninvestigated.

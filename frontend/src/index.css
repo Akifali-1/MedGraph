@@ -1,0 +1,1024 @@
+/* MedGraph AI — Premium Clinical Theme System */
+
+:root {
+  /* Colors - Dark Mode defaults */
+  --bg-dark: #090D16;          /* Deep Slate Black */
+  --panel-bg: #0F172A;         /* Slate 900 */
+  --panel-hover: #1E293B;      /* Slate 800 */
+  --panel-border: rgba(148, 163, 184, 0.08);
+  --panel-border-focus: rgba(148, 163, 184, 0.2);
+  
+  /* Accents */
+  --accent-cyan: #0EA5E9;      /* Clinical Blue/Cyan */
+  --accent-purple: #8B5CF6;    /* Royal Purple */
+  --accent-emerald: #10B981;   /* Safe/Success Green */
+  --accent-rose: #F43F5E;      /* Triage/Critical Rose */
+  --accent-amber: #F59E0B;     /* Warning Amber */
+  
+  /* Typography */
+  --text-primary: #F8FAFC;     /* Slate 50 */
+  --text-secondary: #94A3B8;   /* Slate 400 */
+  --text-muted: #64748B;       /* Slate 500 */
+  --text-contrast: #ffffff;    /* High contrast text */
+  
+  /* Dynamic Component Styles */
+  --input-bg: rgba(0, 0, 0, 0.2);
+  --tag-container-bg: rgba(0, 0, 0, 0.15);
+  --empty-state-icon-bg: rgba(14, 165, 233, 0.05);
+  --glow-opacity: 0.7;
+  --console-bg: #030712;
+  --console-border: rgba(255, 255, 255, 0.03);
+  --modal-overlay-bg: rgba(0, 0, 0, 0.6);
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  --graph-bg: rgba(0, 0, 0, 0.25);
+  --graph-node-fill: #0f172a;
+  
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* Dimensions */
+  --header-height: 64px;
+}
+
+.light-mode {
+  /* Colors - Light Mode overrides */
+  --bg-dark: #F1F5F9;          /* Soft light slate gray */
+  --panel-bg: #FFFFFF;         /* Clean white card background */
+  --panel-hover: #E2E8F0;      /* Light slate hover */
+  --panel-border: rgba(148, 163, 184, 0.15);
+  --panel-border-focus: rgba(14, 165, 233, 0.25);
+  
+  /* Typography overrides */
+  --text-primary: #0F172A;     /* Deep slate text */
+  --text-secondary: #334155;   /* Mid slate text */
+  --text-muted: #64748B;       /* Slate gray */
+  --text-contrast: #0F172A;    /* Turn dark in light mode */
+  
+  /* Dynamic Component Styles overrides */
+  --input-bg: rgba(15, 23, 42, 0.04);
+  --tag-container-bg: rgba(15, 23, 42, 0.03);
+  --empty-state-icon-bg: rgba(14, 165, 233, 0.08);
+  --glow-opacity: 0.15;
+  --console-bg: #F8FAFC;
+  --console-border: rgba(15, 23, 42, 0.08);
+  --modal-overlay-bg: rgba(15, 23, 42, 0.4);
+  --card-shadow: 0 10px 30px rgba(148, 163, 184, 0.06);
+  --graph-bg: rgba(15, 23, 42, 0.02);
+  --graph-node-fill: #FFFFFF;
+}
+
+.light-mode .navbar {
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.light-mode .nav-brand {
+  color: #0F172A;
+}
+
+.light-mode .nav-link {
+  color: #334155;
+}
+
+.light-mode .nav-link:hover {
+  color: #0F172A;
+}
+
+/* Base Resets */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(14, 165, 233, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-cyan);
+}
+
+/* Ambient glow */
+.ambient-glow-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.glow-orb-cyan {
+  position: absolute;
+  top: -10%;
+  left: 20%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.04) 0%, rgba(0, 0, 0, 0) 70%);
+  filter: blur(100px);
+}
+
+.glow-orb-purple {
+  position: absolute;
+  bottom: -10%;
+  right: 15%;
+  width: 55vw;
+  height: 55vw;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.03) 0%, rgba(0, 0, 0, 0) 70%);
+  filter: blur(120px);
+}
+
+/* Main App Wrapper */
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sticky Header */
+.navbar {
+  height: var(--header-height);
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(9, 13, 22, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 32px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+}
+
+.nav-logo-icon {
+  color: var(--accent-cyan);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.nav-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 0.2s;
+  cursor: pointer;
+}
+
+.nav-link:hover {
+  color: #ffffff;
+}
+
+.nav-link.active {
+  color: var(--accent-cyan);
+}
+
+/* Clinical Panel Base Card */
+.clinical-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.clinical-card:hover {
+  border-color: var(--panel-border-focus);
+}
+
+/* Workspace Dashboard Grid (WIDER LEFT COLUMN: 420px) */
+.workspace-grid {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 24px;
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px;
+  flex: 1;
+}
+
+@media (max-width: 1200px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Sidebar Section Headers */
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Forms & Inputs styling */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.form-input, .form-select {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.form-input:focus, .form-select:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+  background: var(--panel-hover);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 10px 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-primary {
+  background: var(--accent-cyan);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: #0284c7;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.btn-danger {
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  color: var(--accent-rose);
+}
+
+.btn-danger:hover {
+  background: rgba(244, 63, 94, 0.2);
+}
+
+.btn-icon-only {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+
+/* Workspace Tabs Navigation */
+.workspace-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 24px;
+  padding-bottom: 4px;
+}
+
+.workspace-tab-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.workspace-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.workspace-tab-btn.active {
+  color: var(--accent-cyan);
+}
+
+.workspace-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--accent-cyan);
+  border-radius: 2px;
+}
+
+/* Tag Inputs */
+.tag-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 38px;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--tag-container-bg);
+  border: 1px solid var(--panel-border);
+}
+
+.tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(148, 163, 184, 0.05);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.tag-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tag-delete-btn:hover {
+  color: var(--accent-rose);
+}
+
+.tag-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Warnings & Urgency Banners */
+.triage-banner {
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  font-size: 13px;
+}
+
+.triage-banner.critical {
+  background: rgba(244, 63, 94, 0.06);
+  border: 1px solid rgba(244, 63, 94, 0.15);
+}
+
+.triage-banner.warning {
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.12);
+}
+
+.triage-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.triage-banner.critical .triage-icon {
+  color: var(--accent-rose);
+}
+
+.triage-banner.warning .triage-icon {
+  color: var(--accent-amber);
+}
+
+.triage-title {
+  font-weight: 700;
+  color: var(--text-contrast);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.triage-desc {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Diagnostics Output List */
+.diagnosis-card {
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+  transition: border-color 0.2s;
+}
+
+.diagnosis-card:hover {
+  border-color: rgba(14, 165, 233, 0.2);
+}
+
+.diagnosis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.diagnosis-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-contrast);
+}
+
+.confidence-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.confidence-slider-bg {
+  flex: 1;
+  height: 6px;
+  background: var(--panel-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.confidence-slider-fill {
+  height: 100%;
+  background: var(--accent-cyan);
+  border-radius: 3px;
+  transition: width 0.8s ease-out;
+}
+
+.confidence-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  min-width: 38px;
+  text-align: right;
+}
+
+.diagnosis-evidence {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+/* Citations and Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.badge-outline {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  color: var(--text-secondary);
+}
+
+.badge-info {
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  background: rgba(14, 165, 233, 0.05);
+  color: var(--accent-cyan);
+}
+
+.badge-purple {
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  background: rgba(139, 92, 246, 0.05);
+  color: var(--accent-purple);
+}
+
+.badge-rose {
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  background: rgba(244, 63, 94, 0.05);
+  color: var(--accent-rose);
+}
+
+.badge-emerald {
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.05);
+  color: var(--accent-emerald);
+}
+
+.badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Clinical Workups */
+.workup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.workup-checkbox-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.workup-checkbox-card:hover {
+  background: var(--panel-hover);
+  border-color: var(--panel-border-focus);
+}
+
+.workup-checkbox-card.checked {
+  color: var(--text-primary);
+  border-color: rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.02);
+}
+
+.workup-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.workup-checkbox-card.checked .workup-icon {
+  color: var(--accent-emerald);
+}
+
+/* Grounding Evidence tab elements */
+.evidence-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.evidence-block {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.evidence-block-header {
+  background: var(--panel-hover);
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.evidence-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-contrast);
+}
+
+.evidence-block-text {
+  padding: 16px 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: var(--input-bg);
+  font-style: italic;
+  border-left: 3px solid var(--accent-cyan);
+  white-space: pre-line;
+}
+
+/* Telemetry Logs Panel (JetBrains Mono) */
+.telemetry-console {
+  background: var(--console-bg);
+  border: 1px solid var(--console-border);
+  border-radius: 8px;
+  padding: 16px;
+  height: 250px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  position: relative;
+}
+
+.telemetry-line {
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+
+.telemetry-line.success {
+  color: var(--accent-emerald);
+}
+
+.telemetry-line.danger {
+  color: var(--accent-rose);
+}
+
+.telemetry-line.warning {
+  color: var(--accent-amber);
+}
+
+.telemetry-timestamp {
+  color: var(--text-muted);
+  margin-right: 8px;
+  user-select: none;
+}
+
+/* SVG Concept Graph Visualizer */
+.svg-graph-container {
+  background: var(--graph-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  width: 100%;
+  height: 280px;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.graph-link {
+  stroke: rgba(148, 163, 184, 0.15);
+  stroke-width: 1.5;
+  stroke-dasharray: 4, 4;
+}
+
+.graph-link.active {
+  stroke: var(--accent-cyan);
+  stroke-dasharray: none;
+  animation: dash 20s linear infinite;
+}
+
+.graph-node-circle {
+  fill: var(--graph-node-fill);
+  stroke: rgba(148, 163, 184, 0.3);
+  stroke-width: 2;
+  transition: all 0.3s;
+}
+
+.graph-node.symptom .graph-node-circle {
+  stroke: var(--accent-cyan);
+}
+
+.graph-node.medication .graph-node-circle {
+  stroke: var(--accent-purple);
+}
+
+.graph-node.diagnosis .graph-node-circle {
+  stroke: var(--accent-emerald);
+  fill: rgba(16, 185, 129, 0.05);
+}
+
+.graph-node-text {
+  fill: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.graph-node-text.title {
+  fill: var(--text-contrast);
+  font-weight: 700;
+}
+
+/* Agent Nodes (Vitals Style) */
+.clinical-vitals-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.vital-node-card {
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.3s;
+}
+
+.vital-node-card.active {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(14, 165, 233, 0.1);
+  background: rgba(14, 165, 233, 0.02);
+}
+
+.vital-node-card.completed {
+  border-color: var(--accent-emerald);
+  background: rgba(16, 185, 129, 0.01);
+}
+
+.vital-node-icon {
+  color: var(--text-muted);
+}
+
+.vital-node-card.active .vital-node-icon {
+  color: var(--accent-cyan);
+}
+
+.vital-node-card.completed .vital-node-icon {
+  color: var(--accent-emerald);
+}
+
+.vital-node-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.vital-node-card.active .vital-node-title {
+  color: var(--text-contrast);
+}
+
+.vital-node-card.completed .vital-node-title {
+  color: var(--accent-emerald);
+}
+
+/* Patient Records History Page Styles */
+.history-search-wrapper {
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.history-search-input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  padding-left: 44px;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-family: var(--font-sans);
+  transition: all 0.2s;
+}
+
+.history-search-input:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+}
+
+.history-table-container {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--input-bg);
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.history-tr {
+  border-bottom: 1px solid var(--panel-border);
+  transition: all 0.2s;
+}
+
+.history-tr:last-child {
+  border-bottom: none;
+}
+
+.history-tr:hover {
+  background: var(--panel-hover);
+}
+
+.history-tr.active-item {
+  background: rgba(14, 165, 233, 0.04);
+}
+
+.history-th {
+  background: var(--panel-hover);
+  padding: 12px 18px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.history-td {
+  padding: 14px 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+.history-td strong {
+  color: var(--text-contrast);
+}
+
+/* Export Summary Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--modal-overlay-bg);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: var(--panel-bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 650px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--panel-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Empty states */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 350px;
+  color: var(--text-secondary);
+  text-align: center;
+  gap: 16px;
+}
+
+.empty-state-icon {
+  opacity: 0.2;
+  color: var(--accent-cyan);
+}
+
+/* Landing Elements */
+.landing-hero {
+  padding: 80px 24px 40px;
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.landing-title {
+  font-size: 42px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1.15;
+  color: var(--text-contrast);
+  margin-bottom: 16px;
+}
+
+.landing-desc {
+  font-size: 16px;
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin: 0 auto 32px;
+  line-height: 1.6;
+}
+
+.landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  max-width: 1100px;
+  margin: 20px auto 80px;
+  padding: 0 24px;
+}
+
+.feature-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(14, 165, 233, 0.08);
+  color: var(--accent-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.app-footer {
+  border-top: 1px solid var(--panel-border);
+  padding: 20px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-dark);
+}

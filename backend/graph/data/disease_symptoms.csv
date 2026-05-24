@@ -1,0 +1,10 @@
+disease,symptom,weight
+STEMI,chest pain,0.90
+STEMI,jaw pain,0.70
+STEMI,sweating,0.60
+Unstable Angina,chest pain,0.85
+Unstable Angina,jaw pain,0.50
+Aortic Dissection,chest pain,0.60
+Aortic Dissection,jaw pain,0.30
+Intracranial Hemorrhage,headache,0.75
+Intracranial Hemorrhage,confusion,0.80

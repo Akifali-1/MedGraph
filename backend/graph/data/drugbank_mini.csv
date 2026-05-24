@@ -1,0 +1,13 @@
+drug1,drug2,severity,effect
+Warfarin,Aspirin,HIGH,increased risk of bleeding
+Aspirin,Warfarin,HIGH,increased risk of bleeding
+Warfarin,Ibuprofen,HIGH,increased risk of bleeding
+Ibuprofen,Warfarin,HIGH,increased risk of bleeding
+Aspirin,Ibuprofen,MEDIUM,decreased antiplatelet effect of aspirin
+Ibuprofen,Aspirin,MEDIUM,decreased antiplatelet effect of aspirin
+Clopidogrel,Aspirin,MEDIUM,increased risk of bleeding (therapeutic DAPT)
+Aspirin,Clopidogrel,MEDIUM,increased risk of bleeding (therapeutic DAPT)
+Warfarin,Clopidogrel,HIGH,increased risk of major hemorrhage
+Clopidogrel,Warfarin,HIGH,increased risk of major hemorrhage
+Lisinopril,Spironolactone,MEDIUM,increased risk of hyperkalemia
+Spironolactone,Lisinopril,MEDIUM,increased risk of hyperkalemia

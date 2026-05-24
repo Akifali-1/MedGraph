@@ -1,0 +1,20 @@
+--- AHA/ACC Clinical Practice Guideline for Chest Pain Assessment ---
+Source: AHA/ACC Guidelines 2021
+Guideline 1: Patients presenting with acute chest pain, jaw pain, neck pain, or sweating (diaphoresis) should be evaluated immediately for Acute Coronary Syndrome (ACS).
+Guideline 2: Electrocardiogram (ECG) must be performed within 10 minutes of arrival for all patients with symptoms suggestive of STEMI (ST-Elevation Myocardial Infarction).
+Guideline 3: Standard medical therapy for STEMI includes immediate administration of Aspirin (162 mg to 325 mg chewed) unless contraindicated.
+Guideline 4: Dual Antiplatelet Therapy (DAPT) combining Aspirin with a P2Y12 inhibitor (e.g., Clopidogrel) is indicated for patients post-PCI in STEMI and Unstable Angina.
+Guideline 5: High-intensity statin therapy (e.g., Atorvastatin 80 mg) should be initiated or continued in all patients with ACS.
+
+--- AHA/ACC Guideline for Aortic Dissection Management ---
+Source: AHA/ACC Guidelines 2022
+Guideline 6: Aortic Dissection is a life-threatening emergency presenting with sudden, severe chest pain, often radiating to the back or jaw, described as "ripping" or "tearing".
+Guideline 7: Risk factors for aortic dissection include hypertension, bicuspid aortic valve, and connective tissue disorders.
+Guideline 8: Intravenous beta-blockers (e.g., Esmolol, Labetalol) are the first-line therapy to reduce heart rate and blood pressure in acute aortic dissection.
+Guideline 9: Urgent surgical intervention is mandatory for Type A aortic dissection involving the ascending aorta.
+
+--- Clinical Guidance on Anticoagulation and Antiplatelets ---
+Source: AHA/ACC Antithrombotic Guidelines
+Guideline 10: Combining Warfarin (anticoagulant) and Aspirin (antiplatelet) significantly increases the risk of major bleeding, including gastrointestinal bleed and intracranial hemorrhage.
+Guideline 11: In patients taking Warfarin who present with signs of intracranial bleeding (headache, confusion, altered mental status), Warfarin must be reversed immediately using Vitamin K and Prothrombin Complex Concentrate (PCC).
+Guideline 12: Dual therapy of Aspirin and Warfarin should only be prescribed when specifically indicated (e.g., mechanical heart valve and coronary stent) and monitored with strict INR targeting.

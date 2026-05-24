@@ -1,0 +1,26 @@
+langchain
+langchain-openai
+langchain-google-genai
+langchain-pinecone
+pinecone-client
+faiss-cpu
+cohere
+fastapi
+uvicorn
+pydantic
+python-dotenv
+neo4j
+langgraph
+langsmith
+redis
+structlog
+boto3
+sagemaker
+pypdf
+python-multipart
+slowapi
+
+# Testing
+pytest
+pytest-asyncio
+httpx

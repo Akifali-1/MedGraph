@@ -8,7 +8,10 @@ from typing import List, Dict, Any
 import pypdf
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_pinecone import PineconeVectorStore
+try:
+    from langchain_pinecone import PineconeVectorStore
+except ImportError:
+    PineconeVectorStore = None
 import pinecone
 
 from backend.config import Config

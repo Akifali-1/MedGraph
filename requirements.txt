@@ -23,7 +23,7 @@ langgraph
 langsmith
 
 # ── Vector stores & retrieval ────────────────────────────────────
-pinecone-client
+pinecone
 rank-bm25
 
 # ── Reranking ────────────────────────────────────────────────────

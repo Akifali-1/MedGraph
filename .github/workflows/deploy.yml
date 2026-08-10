@@ -1,0 +1,147 @@
+name: MedGraph AI CD Pipeline
+
+on:
+  push:
+    branches:
+      - main # Run deployment only on merges/pushes to the main branch
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run Offline CI Tests First
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Clinical Engine Tests
+        run: |
+          python backend/tests/test_flow.py
+
+  deploy-backend:
+    name: Build & Push Backend to ECR (Auto-Deploy)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Docker Image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: medgraph-backend
+          IMAGE_TAG: latest
+        run: |
+          # Build ECR image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          
+          # Push ECR image to registry
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Deploy to Amazon ECS Fargate
+        env:
+          # Must match Terraform, which names resources
+          # "${project_name}-${environment}-...". environment defaults to "prod"
+          # (terraform/variables.tf), so the prod infix is required - without it
+          # describe-services returns NOT_FOUND and the rollout is skipped.
+          CLUSTER_NAME: medgraph-prod-cluster
+          SERVICE_NAME: medgraph-prod-backend-service
+        run: |
+          # Distinguish "service is intentionally scaled to zero" from "service
+          # does not exist". Both used to take the same branch and print a
+          # reassuring skip message, so a pushed image silently never rolled out.
+          DESCRIBE=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" --services "$SERVICE_NAME" \
+            --query "services[0].[status,desiredCount]" --output text 2>/dev/null || echo "")
+
+          if [ -z "$DESCRIBE" ] || [ "$DESCRIBE" = "None" ]; then
+            echo "::error::ECS service '$SERVICE_NAME' not found in cluster '$CLUSTER_NAME'."
+            echo "A new image was pushed to ECR but no rollout happened."
+            echo "Either the infrastructure is not applied, or these names have drifted from Terraform."
+            exit 1
+          fi
+
+          STATUS=$(echo "$DESCRIBE" | awk '{print $1}')
+          DESIRED=$(echo "$DESCRIBE" | awk '{print $2}')
+          echo "Service status=$STATUS desiredCount=$DESIRED"
+
+          if [ "$STATUS" != "ACTIVE" ]; then
+            echo "::error::Service exists but status is '$STATUS'; not deploying."
+            exit 1
+          fi
+
+          if [ "$DESIRED" = "0" ]; then
+            echo "::warning::Service is scaled to 0 (backend intentionally off)."
+            echo "Image is in ECR and will be picked up when the service scales up."
+            exit 0
+          fi
+
+          echo "Triggering rolling redeployment..."
+          aws ecs update-service --cluster "$CLUSTER_NAME" --service "$SERVICE_NAME" --force-new-deployment
+
+          echo "Waiting for the deployment to stabilise..."
+          aws ecs wait services-stable --cluster "$CLUSTER_NAME" --services "$SERVICE_NAME"
+          echo "Deployment complete."
+
+  deploy-frontend:
+    name: Build & Deploy React Frontend to S3 & CloudFront
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Compile Production Bundle
+        working-directory: frontend
+        run: npm run build
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy static files to S3
+        run: |
+          aws s3 sync frontend/dist/ s3://medgraph-prod-frontend-site/ --delete
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          # Invalidates CDN cache globally so users instantly receive the latest updates
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"

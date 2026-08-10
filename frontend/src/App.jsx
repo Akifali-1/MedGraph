@@ -30,9 +30,14 @@ import {
   Moon
 } from 'lucide-react';
 import './App.css';
+import './cinematic.css';
+import './document.css';
 import AuthView from './components/AuthView';
+import CinematicLanding from './components/CinematicLanding';
+import HowItWorks from './components/HowItWorks';
 import PatientWorkspace from './components/PatientWorkspace';
 import KnowledgeUploader from './components/KnowledgeUploader';
+import { getApiUrl } from './config';
 
 // Pre-seeded patient case history logs for practitioner demonstration
 const INITIAL_HISTORY = [
@@ -110,8 +115,10 @@ function App() {
   const [view, setView] = useState('landing'); // 'landing' | 'auth' | 'dashboard'
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [theme, setTheme] = useState('dark'); // 'dark' | 'light'
+  const [theme, setTheme] = useState(() => localStorage.getItem('medgraph_theme') || 'light'); // 'dark' | 'light'
   const [role, setRole] = useState('doctor'); // 'doctor' | 'patient'
+  const [authToken, setAuthToken] = useState('');
+  const [authError, setAuthError] = useState('');
   const [practitioner, setPractitioner] = useState({
     name: 'Dr. Evelyn Carter, MD',
     npi: '1982736450',
@@ -119,12 +126,110 @@ function App() {
     clinic: 'Cardiovascular Research Center'
   });
 
+  const [isGoogleSsoConfigured, setIsGoogleSsoConfigured] = useState(false);
+  const roleRef = useRef(role);
+
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
+
+  // Restore session from localStorage on load
+  useEffect(() => {
+    const token = localStorage.getItem('medgraph_access_token');
+    const storedUser = localStorage.getItem('medgraph_user');
+    if (token && storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setAuthToken(token);
+        setIsLoggedIn(true);
+        setRole(parsedUser.role === 'medical_practitioner' ? 'doctor' : 'patient');
+        if (parsedUser.role === 'medical_practitioner') {
+          setPractitioner({
+            name: parsedUser.name || '',
+            npi: parsedUser.npi || '',
+            email: parsedUser.email || '',
+            clinic: parsedUser.clinic || ''
+          });
+        }
+        setView('dashboard');
+      } catch (e) {
+        console.error("Failed to restore session from localStorage", e);
+      }
+    }
+  }, []);
+
+  // Query Google SSO Configuration on boot / when view changes to auth
+  useEffect(() => {
+    const fetchGoogleConfig = async () => {
+      try {
+        const response = await fetch(getApiUrl('/auth/config'));
+        if (response.ok) {
+          const data = await response.json();
+          if (data.google_client_id) {
+            setIsGoogleSsoConfigured(true);
+            
+            // Wait for script to load & DOM container to mount, then render standard button
+            setTimeout(() => {
+              if (window.google) {
+                window.google.accounts.id.initialize({
+                  client_id: data.google_client_id,
+                  callback: async (res) => {
+                    setAuthError('');
+                    try {
+                      const apiRes = await fetch(getApiUrl('/auth/google'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          credential: res.credential,
+                          role: mapUiRoleToApiRole(roleRef.current)
+                        })
+                      });
+                      if (!apiRes.ok) {
+                        const errData = await apiRes.json();
+                        setAuthError(errData.detail || 'Google SSO login failed.');
+                        return;
+                      }
+                      const sessionData = await apiRes.json();
+                      applyAuthenticatedSession(sessionData);
+                    } catch (err) {
+                      setAuthError('Unable to connect to Google authentication server.');
+                    }
+                  }
+                });
+                
+                // Render inside container
+                const btnContainer = document.getElementById("google-sso-button");
+                if (btnContainer) {
+                  window.google.accounts.id.renderButton(btnContainer, {
+                    theme: "outline",
+                    size: "large",
+                    width: 368
+                  });
+                }
+              }
+            }, 300);
+          } else {
+            setIsGoogleSsoConfigured(false);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to retrieve Google Auth config from backend:", e);
+        setIsGoogleSsoConfigured(false);
+      }
+    };
+
+    if (view === 'auth') {
+      fetchGoogleConfig();
+    }
+  }, [view, authMode]);
+
   useEffect(() => {
     if (theme === 'light') {
       document.documentElement.classList.add('light-mode');
     } else {
       document.documentElement.classList.remove('light-mode');
     }
+    localStorage.setItem('medgraph_theme', theme);
   }, [theme]);
 
   // Auth Form Fields
@@ -135,11 +240,11 @@ function App() {
   const [clinicInput, setClinicInput] = useState('');
 
   // CDSS Dashboard Form Fields
-  const [age, setAge] = useState(65);
-  const [sex, setSex] = useState('M');
-  const [symptoms, setSymptoms] = useState(['chest pain', 'jaw pain', 'sweating']);
-  const [medications, setMedications] = useState(['Warfarin', 'Aspirin']);
-  const [comorbidities, setComorbidities] = useState(['Hypertension']);
+  const [age, setAge] = useState('');
+  const [sex, setSex] = useState('');
+  const [symptoms, setSymptoms] = useState([]);
+  const [medications, setMedications] = useState([]);
+  const [comorbidities, setComorbidities] = useState([]);
   
   // Temporary input state
   const [symptomText, setSymptomText] = useState('');
@@ -183,24 +288,27 @@ function App() {
   // Handle adding items dynamically
   const addSymptom = (e) => {
     e.preventDefault();
-    if (symptomText.trim() && !symptoms.includes(symptomText.trim().toLowerCase())) {
-      setSymptoms([...symptoms, symptomText.trim().toLowerCase()]);
+    const entries = symptomText.split(',').map(s => s.trim().toLowerCase()).filter(s => s && !symptoms.includes(s));
+    if (entries.length > 0) {
+      setSymptoms([...symptoms, ...entries]);
       setSymptomText('');
     }
   };
 
   const addMedication = (e) => {
     e.preventDefault();
-    if (medicationText.trim() && !medications.includes(medicationText.trim())) {
-      setMedications([...medications, medicationText.trim()]);
+    const entries = medicationText.split(',').map(m => m.trim()).filter(m => m && !medications.includes(m));
+    if (entries.length > 0) {
+      setMedications([...medications, ...entries]);
       setMedicationText('');
     }
   };
 
   const addComorbidity = (e) => {
     e.preventDefault();
-    if (comorbidityText.trim() && !comorbidities.includes(comorbidityText.trim())) {
-      setComorbidities([...comorbidities, comorbidityText.trim()]);
+    const entries = comorbidityText.split(',').map(c => c.trim()).filter(c => c && !comorbidities.includes(c));
+    if (entries.length > 0) {
+      setComorbidities([...comorbidities, ...entries]);
       setComorbidityText('');
     }
   };
@@ -242,8 +350,8 @@ function App() {
 
   // Clear inputs
   const resetForm = () => {
-    setAge(45);
-    setSex('M');
+    setAge('');
+    setSex('');
     setSymptoms([]);
     setMedications([]);
     setComorbidities([]);
@@ -270,7 +378,7 @@ function App() {
   const updateRagEvidence = (diagnosisOutput, symptomsList) => {
     const isCardiac = symptomsList.some(s => s.toLowerCase().includes('chest') || s.toLowerCase().includes('jaw') || s.toLowerCase().includes('sweating') || s.toLowerCase().includes('pressure'));
     const isNeuro = symptomsList.some(s => s.toLowerCase().includes('headache') || s.toLowerCase().includes('cephalalgia') || s.toLowerCase().includes('confusion'));
-    const hasDDI = diagnosisOutput?.requires_immediate_intervention || false;
+    const hasDDI = diagnosisOutput?.requires_immediate_intervention || diagnosisOutput?.critical_flag || false;
 
     let passages = [];
 
@@ -329,6 +437,15 @@ function App() {
 
   // Primary trigger to invoke diagnostics
   const runDiagnostics = async () => {
+    const parsedAge = parseInt(age);
+    if (age === '' || isNaN(parsedAge) || parsedAge < 0 || parsedAge > 120) {
+      setError('Please enter a valid patient age between 0 and 120.');
+      return;
+    }
+    if (!sex || (sex !== 'M' && sex !== 'F')) {
+      setError("Please select the patient's biological sex.");
+      return;
+    }
     if (symptoms.length === 0) {
       setError('Please add at least one symptom to run diagnostics.');
       return;
@@ -349,8 +466,14 @@ function App() {
     setActiveNode('graph');
     await addLog('Linker engine: Resolving clinical entities and mapping synonyms...', 'info', 300);
     const resolvedSym = symptoms.map(s => s === 'cephalalgia' ? 'headache' : s === 'chest pressure' ? 'chest pain' : s);
-    if (resolvedSym.join(',') !== symptoms.join(',')) {
-      await addLog(`Synonyms resolved: ${symptoms.join(' ➔ ')} matched to standard UMLS terms`, 'success', 250);
+    const resolvedLogMessages = [];
+    symptoms.forEach((s, idx) => {
+      if (s !== resolvedSym[idx]) {
+        resolvedLogMessages.push(`${s} ➔ ${resolvedSym[idx]}`);
+      }
+    });
+    if (resolvedLogMessages.length > 0) {
+      await addLog(`Synonyms resolved: ${resolvedLogMessages.join(', ')} matched to standard UMLS terms`, 'success', 250);
     }
     
     await addLog('Connecting to Neo4j Graph Database...', 'info', 300);
@@ -389,11 +512,18 @@ function App() {
     // Call actual backend or fallback to local mock
     let diagnosticResult = null;
     try {
-      const response = await fetch('http://localhost:8000/diagnose', {
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      const diagnoseController = new AbortController();
+      const diagnoseTimeout = setTimeout(() => diagnoseController.abort(), 120000); // 120s timeout
+      const response = await fetch(getApiUrl('/diagnose'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: headers,
+        signal: diagnoseController.signal,
         body: JSON.stringify({
           age: parseInt(age),
           sex: sex,
@@ -402,12 +532,25 @@ function App() {
           comorbidities: comorbidities
         })
       });
+      clearTimeout(diagnoseTimeout);
 
       if (!response.ok) {
         throw new Error('API Response Error');
       }
 
       const data = await response.json();
+      if (data.fallbacks_active) {
+        if (data.fallbacks_active.llm) {
+          console.warn("⚠️ MedGraph AI Alert: LLM reasoning core is running on offline SIMULATED FALLBACK.");
+        } else {
+          console.log("🚀 MedGraph AI Core: Live LangGraph ReAct agent successfully executed.");
+        }
+        if (data.fallbacks_active.neo4j) {
+          console.warn("⚠️ MedGraph AI Alert: Neo4j database is unreachable. Using local in-memory fallback graph.");
+        } else {
+          console.log("🚀 MedGraph AI Core: Connected live to Neo4j cloud instance.");
+        }
+      }
       diagnosticResult = data;
       setResults(data);
       updateRagEvidence(data, resolvedSym);
@@ -525,10 +668,17 @@ function App() {
           };
         }
       }
+      // Tag the payload so the UI can label it. Rendering fabricated clinical
+      // output indistinguishable from a real backend response is the dangerous
+      // failure here, not the fallback itself.
+      mockData.is_simulated = true;
+      mockData.simulated_reason = (e && e.name === 'AbortError')
+        ? 'Request timed out'
+        : 'Backend unreachable';
       diagnosticResult = mockData;
       setResults(mockData);
       updateRagEvidence(mockData, resolvedSym);
-      await addLog('Local mock diagnosis completed and displayed.', 'success', 100);
+      await addLog('SIMULATED result - backend unreachable. This is not a live diagnosis.', 'warning', 100);
     } finally {
       setIsDiagnosing(false);
       setActiveNode('none');
@@ -553,22 +703,110 @@ function App() {
     }
   };
 
-  const handleLoginSubmit = (e) => {
-    e.preventDefault();
+  const mapUiRoleToApiRole = (uiRole) => (
+    uiRole === 'doctor' ? 'medical_practitioner' : 'patient'
+  );
+
+  const applyAuthenticatedSession = (data) => {
+    setAuthToken(data.access_token);
+    setAuthError('');
+    localStorage.setItem('medgraph_access_token', data.access_token);
+    localStorage.setItem('medgraph_user', JSON.stringify(data.user));
+
+    if (data.user.role === 'medical_practitioner') {
+      setRole('doctor');
+      setPractitioner({
+        name: data.user.name || '',
+        npi: data.user.npi || '',
+        email: data.user.email || '',
+        clinic: data.user.clinic || ''
+      });
+    } else {
+      setRole('patient');
+    }
+
     setIsLoggedIn(true);
     setView('dashboard');
   };
 
-  const handleSignupSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    setPractitioner({
-      name: nameInput || 'Dr. Evelyn Carter, MD',
-      npi: npiInput || '1982736450',
-      email: emailInput || 'e.carter@medgraph.ai',
-      clinic: clinicInput || 'Cardiovascular Research Center'
-    });
-    setIsLoggedIn(true);
-    setView('dashboard');
+    const form = new URLSearchParams();
+    form.append('username', emailInput);
+    form.append('password', passwordInput);
+    form.append('scope', mapUiRoleToApiRole(role));
+
+    try {
+      const response = await fetch(getApiUrl('/auth/token'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form
+      });
+
+      if (!response.ok) {
+        setAuthError('Authentication failed. Check credentials and role type.');
+        return;
+      }
+
+      const data = await response.json();
+      applyAuthenticatedSession(data);
+    } catch (err) {
+      setAuthError('Unable to connect to safety gateway.');
+    }
+  };
+
+  const handleSignupSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(getApiUrl('/auth/register'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: emailInput,
+          password: passwordInput,
+          role: mapUiRoleToApiRole(role),
+          name: nameInput || (role === 'doctor' ? 'Medical Practitioner' : 'Patient'),
+          npi: role === 'doctor' ? npiInput : null,
+          clinic: role === 'doctor' ? clinicInput : null,
+          tenant_id: 'demo-clinic'
+        })
+      });
+
+      if (!response.ok) {
+        setAuthError('Account setup failed. Email may already be registered.');
+        return;
+      }
+
+      const data = await response.json();
+      applyAuthenticatedSession(data);
+    } catch (err) {
+      setAuthError('Unable to connect to safety gateway.');
+    }
+  };
+
+  const handleGoogleLogin = async (uiRole) => {
+    setAuthError('');
+    try {
+      const response = await fetch(getApiUrl('/auth/google'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          credential: 'mock_google_jwt_token',
+          role: mapUiRoleToApiRole(uiRole)
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        setAuthError(errorData.detail || 'Google SSO login failed.');
+        return;
+      }
+
+      const data = await response.json();
+      applyAuthenticatedSession(data);
+    } catch (err) {
+      setAuthError('Unable to connect to Google authentication server.');
+    }
   };
 
   // Generate markdown text of the report
@@ -582,7 +820,7 @@ function App() {
     report += `**Pre-existing Comorbidities:** ${comorbidities.length > 0 ? comorbidities.join(', ') : 'None'}\n\n`;
     report += `--- \n\n`;
     
-    if (results.requires_immediate_intervention) {
+    if (results.requires_immediate_intervention || results.critical_flag) {
       report += `### ⚠️ CRITICAL PHARMACOLOGICAL HAZARD ALERT\n`;
       results.drug_interactions.forEach(i => {
         report += `- **${i.dr1} + ${i.dr2}:** ${i.effect} (Severity: ${i.severity})\n`;
@@ -717,26 +955,43 @@ function App() {
           <span>MedGraph AI <span style={{ fontSize: '10px', color: 'var(--accent-cyan)', background: 'rgba(14,165,233,0.1)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>CDSS v1.0</span></span>
         </div>
         <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span 
-            className={`nav-link ${view === 'landing' ? 'active' : ''}`} 
+          <span
+            className={`nav-link ${view === 'landing' ? 'active' : ''}`}
             onClick={() => setView('landing')}
           >
-            Science Overview
+            Overview
+          </span>
+          <span
+            className={`nav-link ${view === 'how' ? 'active' : ''}`}
+            onClick={() => setView('how')}
+          >
+            How it works
           </span>
           {isLoggedIn ? (
             <>
               {role === 'doctor' ? (
-                <span className="nav-link active" style={{ cursor: 'default' }}>
-                  🥼 Practitioner Console
+                <span
+                  className={`nav-link ${view === 'dashboard' ? 'active' : ''}`}
+                  onClick={() => setView('dashboard')}
+                >
+                  <Stethoscope size={14} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
+                  Practitioner Console
                 </span>
               ) : (
-                <span className="nav-link active" style={{ cursor: 'default' }}>
-                  👤 Patient Portal
+                <span
+                  className={`nav-link ${view === 'dashboard' ? 'active' : ''}`}
+                  onClick={() => setView('dashboard')}
+                >
+                  <UserCheck size={14} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
+                  Patient Portal
                 </span>
               )}
               <button 
                 className="btn btn-secondary" 
                 onClick={() => {
+                  localStorage.removeItem('medgraph_access_token');
+                  localStorage.removeItem('medgraph_user');
+                  setAuthToken('');
                   setIsLoggedIn(false);
                   setView('landing');
                 }}
@@ -773,88 +1028,23 @@ function App() {
 
       {/* Landing View */}
       {view === 'landing' && (
-        <main>
-          <div className="landing-hero">
-            <div className="badge badge-info" style={{ marginBottom: '16px' }}>
-              <Sparkles size={12} /> Explainable Medical Graph Reasoning
-            </div>
-            <h1 className="landing-title">
-              Dual-System Clinical Decision Support Workspaces
-            </h1>
-            <p className="landing-desc">
-              Unifies structured biomedical Knowledge Graphs (Neo4j) with dense vector literature databases (RAG) to generate clinical diagnoses backed by verified sources.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-              {isLoggedIn ? (
-                <button className="btn btn-primary" onClick={() => setView('dashboard')}>
-                  Enter Workspace
-                  <ArrowRight size={15} />
-                </button>
-              ) : (
-                <>
-                  <button className="btn btn-primary" onClick={() => { setAuthMode('login'); setView('auth'); }}>
-                    Launch Console
-                    <ArrowRight size={15} />
-                  </button>
-                  <button className="btn btn-secondary" onClick={() => { setAuthMode('signup'); setView('auth'); }}>
-                    Register Practitioner
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
+        <CinematicLanding
+          isLoggedIn={isLoggedIn}
+          onEnterWorkspace={() => setView('dashboard')}
+          onLogin={() => { setAuthMode('login'); setView('auth'); }}
+          onRegister={() => { setAuthMode('signup'); setView('auth'); }}
+          onHowItWorks={() => setView('how')}
+        />
+      )}
 
-          {/* Stats Bar */}
-          <div style={{ maxWidth: '1000px', margin: '0 auto 40px', padding: '0 24px' }}>
-            <div className="clinical-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', textAlign: 'center', padding: '20px' }}>
-              <div>
-                <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent-cyan)' }}>&lt; 1.5s</div>
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '4px' }}>Graph Query Latency</div>
-              </div>
-              <div style={{ borderLeft: '1px solid var(--panel-border)', borderRight: '1px solid var(--panel-border)' }}>
-                <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-contrast)' }}>92.4%</div>
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '4px' }}>MedQA Fine-Tuning Acc</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent-purple)' }}>100%</div>
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '4px' }}>Citation Veracity Verification</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Core Science features */}
-          <div className="landing-grid">
-            <div className="clinical-card">
-              <div className="feature-icon">
-                <Database size={20} />
-              </div>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '10px' }}>Bio-Knowledge Graph</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                Leverages standard NIH RxNav and Columbia University databases loaded into Neo4j. Traverses nodes using cypher rules to flag drug interactions instantly.
-              </p>
-            </div>
-            
-            <div className="clinical-card">
-              <div className="feature-icon" style={{ color: 'var(--accent-purple)', background: 'rgba(139,92,246,0.08)' }}>
-                <BookOpen size={20} />
-              </div>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '10px' }}>Guideline-Grounded RAG</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                Queries guideline literature index using dense embeddings. Applies metadata logic to filter and prioritize official guidelines over general literature.
-              </p>
-            </div>
-
-            <div className="clinical-card">
-              <div className="feature-icon" style={{ color: 'var(--accent-emerald)', background: 'rgba(16,185,129,0.08)' }}>
-                <Brain size={20} />
-              </div>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '10px' }}>Verifiable LLM Reasoning</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                Runs fine-tuned Gemma 2 parameters deployed on AWS SageMaker endpoints, with automatic fallbacks and post-generation citation veracity checking.
-              </p>
-            </div>
-          </div>
-        </main>
+      {/* How MedGraph Works */}
+      {view === 'how' && (
+        <HowItWorks
+          isLoggedIn={isLoggedIn}
+          onEnterWorkspace={() => setView('dashboard')}
+          onLogin={() => { setAuthMode('login'); setView('auth'); }}
+          onRegister={() => { setAuthMode('signup'); setView('auth'); }}
+        />
       )}
 
       {/* Auth View */}
@@ -876,6 +1066,9 @@ function App() {
           setClinicInput={setClinicInput}
           handleLoginSubmit={handleLoginSubmit}
           handleSignupSubmit={handleSignupSubmit}
+          authError={authError}
+          handleGoogleLogin={handleGoogleLogin}
+          isGoogleSsoConfigured={isGoogleSsoConfigured}
         />
       )}
 
@@ -936,6 +1129,7 @@ function App() {
                 <div>
                   <label className="form-label">Sex</label>
                   <select className="form-select" value={sex} onChange={(e) => setSex(e.target.value)}>
+                    <option value="" disabled>Select Sex...</option>
                     <option value="M">Male (M)</option>
                     <option value="F">Female (F)</option>
                   </select>
@@ -1142,8 +1336,31 @@ function App() {
                       </div>
                     </div>
 
+                    {/* Simulated-output banner. The offline fallback fabricates
+                        clinical content, so it must never be mistaken for a
+                        real backend response. */}
+                    {results.is_simulated && (
+                      <div className="triage-banner" style={{
+                        borderColor: 'var(--accent-amber)',
+                        background: 'rgba(217, 169, 95, 0.1)',
+                        marginBottom: '14px'
+                      }}>
+                        <AlertTriangle className="triage-icon" size={20} style={{ color: 'var(--accent-amber)' }} />
+                        <div>
+                          <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>
+                            SIMULATED OUTPUT - NOT A LIVE DIAGNOSIS
+                          </h4>
+                          <p className="triage-desc">
+                            {results.simulated_reason || 'Backend unreachable'}. These results were
+                            generated locally for demonstration and are not derived from the
+                            knowledge graph, guideline retrieval, or the reasoning model.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Flashing Warning Banner */}
-                    {results.requires_immediate_intervention && (
+                    {(results.requires_immediate_intervention || results.critical_flag) && (
                       <div className="triage-banner critical">
                         <ShieldAlert className="triage-icon" size={20} />
                         <div>
@@ -1360,7 +1577,7 @@ function App() {
                       </thead>
                       <tbody>
                         {filteredHistory.map((item) => {
-                          const hasAlert = item.results?.requires_immediate_intervention || false;
+                          const hasAlert = item.results?.requires_immediate_intervention || item.results?.critical_flag || false;
                           const topDiag = item.results?.diagnoses?.[0];
                           
                           return (
@@ -1545,9 +1762,64 @@ function App() {
         </div>
       )}
 
-      {/* Footer */}
       <footer className="app-footer">
-        <p>© 2026 MedGraph AI. Integrated Clinical Decision Support System. Developed for Demonstration Auditing Only.</p>
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <div className="footer-logo">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.4 4 8.2V22h8v-3.8c1.9-1.8 4-4.8 4-8.2a8 8 0 0 0-8-8Z" />
+                <path d="M10 22h4" />
+                <path d="M9 6.5c1.5-1 4.5-1 6 0" />
+                <path d="M8 10c2-1.5 6-1.5 8 0" />
+              </svg>
+              <span>MedGraph AI</span>
+            </div>
+            <p className="footer-desc">
+              Graph-augmented clinical intelligence connecting structured medical evidence to diagnostic decisions.
+            </p>
+          </div>
+
+          <div className="footer-col">
+            <h4 className="footer-col-title">Platform</h4>
+            <ul className="footer-links">
+              <li><span>Clinical Decision Support</span></li>
+              <li><span>Drug Interaction Engine</span></li>
+              <li><span>Evidence Retrieval</span></li>
+              <li><span>Knowledge Graph</span></li>
+            </ul>
+          </div>
+
+          <div className="footer-col">
+            <h4 className="footer-col-title">Technology</h4>
+            <ul className="footer-links">
+              <li><span>Neo4j + RxNav</span></li>
+              <li><span>Hybrid RAG Pipeline</span></li>
+              <li><span>Citation Verification</span></li>
+              <li><span>Graceful Degradation</span></li>
+            </ul>
+          </div>
+
+          <div className="footer-col">
+            <h4 className="footer-col-title">Resources</h4>
+            <ul className="footer-links">
+              <li><span>API Documentation</span></li>
+              <li><span>AHA/ACC Guidelines</span></li>
+              <li><span>Architecture Overview</span></li>
+              <li><span>HIPAA Compliance</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="footer-bottom">
+          <span>© 2026 MedGraph AI. Research prototype — not a certified medical device.</span>
+          <span className="footer-bottom-links">
+            <span>Privacy</span>
+            <span className="footer-dot">·</span>
+            <span>Terms</span>
+            <span className="footer-dot">·</span>
+            <span>HIPAA Notice</span>
+          </span>
+        </div>
       </footer>
     </div>
   );

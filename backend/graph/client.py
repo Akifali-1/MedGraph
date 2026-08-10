@@ -36,6 +36,11 @@ class Neo4jClient:
         self.driver = None
         self.use_mock = True
         
+        import os
+        if os.getenv("TESTING") == "true" or os.getenv("CI") == "true":
+            logger.info("Testing/CI environment active. Bypassing live Neo4j initialization and using local mock knowledge graph.")
+            return
+
         uri = Config.NEO4J_URI
         username = Config.NEO4J_USERNAME
         password = Config.NEO4J_PASSWORD
@@ -60,34 +65,38 @@ class Neo4jClient:
         if self.driver:
             self.driver.close()
 
-    def query_drug_interactions(self, medications: List[str]) -> List[Dict[str, Any]]:
-        """Queries drug-drug interactions for the specified medications list."""
+    def query_drug_interactions(self, medications: List[str], doctor_id: str = None) -> List[Dict[str, Any]]:
+        """Queries drug-drug interactions for the specified medications list, isolated per doctor."""
         if self.use_mock:
-            logger.info(f"Querying MOCK drug interactions for: {medications}")
+            logger.info(f"Querying MOCK drug interactions for: {medications} under context doctor_id: {doctor_id}")
             results = []
             meds_set = {m.lower() for m in medications}
             for interaction in MOCK_INTERACTIONS:
                 dr1 = interaction["dr1.name"].lower()
                 dr2 = interaction["dr2.name"].lower()
                 if dr1 in meds_set and dr2 in meds_set:
-                    results.append({
-                        "dr1": interaction["dr1.name"],
-                        "dr2": interaction["dr2.name"],
-                        "severity": interaction["r.severity"],
-                        "effect": interaction["r.effect"]
-                    })
+                    scope = interaction.get("r.scope", "global")
+                    doc_id = interaction.get("r.doctor_id")
+                    if scope == "global" or (scope == "private" and doc_id == doctor_id):
+                        results.append({
+                            "dr1": interaction["dr1.name"],
+                            "dr2": interaction["dr2.name"],
+                            "severity": interaction["r.severity"],
+                            "effect": interaction["r.effect"]
+                        })
             return results
 
-        # Live Cypher Query
-        logger.info(f"Querying live Neo4j drug interactions for: {medications}")
+        # Live Cypher Query with tenant boundary check
+        logger.info(f"Querying live Neo4j drug interactions for: {medications} under context doctor_id: {doctor_id}")
         query = """
             MATCH (dr1:Drug)-[r:INTERACTS_WITH]->(dr2:Drug)
             WHERE dr1.name IN $meds AND dr2.name IN $meds
+              AND (r.scope = "global" OR (r.scope = "private" AND r.doctor_id = $doctor_id))
             RETURN dr1.name AS dr1, dr2.name AS dr2, r.severity AS severity, r.effect AS effect
         """
         try:
             with self.driver.session() as session:
-                result = session.run(query, meds=medications)
+                result = session.run(query, meds=medications, doctor_id=doctor_id)
                 return [dict(r) for r in result]
         except Exception as e:
             logger.error(f"Live Neo4j query error: {e}. Returning empty list.")

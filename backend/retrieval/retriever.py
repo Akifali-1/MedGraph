@@ -17,8 +17,8 @@ DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 GUIDELINES_PATH = os.path.join(DATA_DIR, "data", "aha_acc_guidelines.txt")
 ABSTRACTS_PATH = os.path.join(DATA_DIR, "data", "pubmed_abstracts.txt")
 
-# Global Retriever Instances
-_hybrid_retriever = None
+# Cached retrievers mapped per doctor to prevent cross-tenant leakage
+_retrievers_cache = {}
 _documents_cache = []
 
 def load_and_chunk_guidelines() -> List[Document]:
@@ -63,11 +63,12 @@ def load_and_chunk_guidelines() -> List[Document]:
     _documents_cache = all_docs
     return all_docs
 
-def setup_retriever():
-    """Sets up the hybrid (Dense + BM25) retriever."""
-    global _hybrid_retriever
-    if _hybrid_retriever is not None:
-        return _hybrid_retriever
+def setup_retriever(doctor_id: str = None):
+    """Sets up the hybrid (Dense + BM25) retriever isolated per doctor."""
+    global _retrievers_cache
+    cache_key = doctor_id or "global"
+    if cache_key in _retrievers_cache:
+        return _retrievers_cache[cache_key]
 
     chunks = load_and_chunk_guidelines()
     if not chunks:
@@ -85,7 +86,10 @@ def setup_retriever():
     # Setup Dense Vector Store (Pinecone or local FAISS fallback)
     dense_vectorstore = None
     pinecone_key = Config.PINECONE_API_KEY
-    if pinecone_key and (pinecone_key.strip().lower().startswith("your_") or "placeholder" in pinecone_key.lower() or not pinecone_key.strip()):
+    if os.getenv("TESTING") == "true" or os.getenv("CI") == "true":
+        logger.info("Testing/CI environment detected. Bypassing Pinecone to use local FAISS vector store.")
+        pinecone_key = None
+    elif pinecone_key and (pinecone_key.strip().lower().startswith("your_") or "placeholder" in pinecone_key.lower() or not pinecone_key.strip()):
         pinecone_key = None
     
     if pinecone_key and embeddings:
@@ -124,8 +128,9 @@ def setup_retriever():
     if dense_vectorstore is None:
         logger.warning("No dense vector store available. Falling back to BM25-only retriever.")
         bm25_retriever.k = 5
-        _hybrid_retriever = bm25_retriever
-        return _hybrid_retriever
+        hybrid_retriever = bm25_retriever
+        _retrievers_cache[cache_key] = hybrid_retriever
+        return hybrid_retriever
 
     # Setup Dense Retriever
     dense_retriever = dense_vectorstore.as_retriever(
@@ -135,36 +140,44 @@ def setup_retriever():
         }
     )
 
-    # Setup User Uploads Retriever from Pinecone
+    # Setup User Uploads Retriever from Pinecone (Isolate namespace per doctor)
     try:
+        if os.getenv("TESTING") == "true" or os.getenv("CI") == "true":
+            raise ValueError("Bypass Pinecone user uploads index during testing.")
+            
         from langchain_pinecone import PineconeVectorStore
         from backend.config.singletons import get_pinecone_index
+        
+        user_namespace = f"user_uploads_doc_{doctor_id}" if doctor_id else "user_uploads"
+        
         user_vectorstore = PineconeVectorStore(
             index=get_pinecone_index(),
             embedding=embeddings,
-            namespace="user_uploads"
+            namespace=user_namespace
         )
         user_retriever = user_vectorstore.as_retriever(search_kwargs={"k": 5})
         
         # Combine using Reciprocal Rank Fusion (RRF)
-        _hybrid_retriever = EnsembleRetriever(
+        hybrid_retriever = EnsembleRetriever(
             retrievers=[bm25_retriever, dense_retriever, user_retriever],
             weights=[0.3, 0.4, 0.3]
         )
-        logger.info("Hybrid Ensemble Retriever with User Uploads compiled successfully.")
+        logger.info(f"Hybrid Ensemble Retriever with User Uploads namespace '{user_namespace}' compiled successfully.")
     except Exception as e:
         logger.warning(f"Failed to setup user uploads retriever: {e}. Falling back to default ensemble.")
         # Combine using Reciprocal Rank Fusion (RRF)
-        _hybrid_retriever = EnsembleRetriever(
+        hybrid_retriever = EnsembleRetriever(
             retrievers=[bm25_retriever, dense_retriever],
             weights=[0.4, 0.6]
         )
         logger.info("Hybrid Ensemble Retriever (Dense + Sparse) compiled successfully.")
-    return _hybrid_retriever
+        
+    _retrievers_cache[cache_key] = hybrid_retriever
+    return hybrid_retriever
 
-def get_relevant_guidelines(query: str, top_n: int = 5) -> List[str]:
+def get_relevant_guidelines(query: str, top_n: int = 5, doctor_id: str = None) -> List[str]:
     """Retrieves and reranks relevant guidelines for a given query."""
-    retriever = setup_retriever()
+    retriever = setup_retriever(doctor_id)
     
     # Retrieve top documents
     raw_docs = retriever.invoke(query)

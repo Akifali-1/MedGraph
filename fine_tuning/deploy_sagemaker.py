@@ -44,6 +44,14 @@ def deploy():
     )
     sagemaker_session = sagemaker.Session(boto_session=boto_session)
 
+    # Clean up pre-existing endpoint config if it exists to prevent ValidationException
+    try:
+        sm_client = boto_session.client("sagemaker")
+        sm_client.delete_endpoint_config(EndpointConfigName=endpoint_name)
+        logger.info(f"Deleted pre-existing endpoint configuration '{endpoint_name}' to avoid conflicts.")
+    except Exception:
+        pass
+
     # 2. Retrieve Hugging Face LLM TGI Container URI
     # TGI container provides high-performance text generation with GPU support
     try:

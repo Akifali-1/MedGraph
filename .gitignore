@@ -37,3 +37,16 @@ scratch/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Agent skills & IDE metadata
+.agents/
+.claude/
+skills-lock.json
+test_agent.py
+
+# Terraform files
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars

@@ -1,26 +1,49 @@
-langchain
-langchain-openai
-langchain-google-genai
-langchain-pinecone
-pinecone-client
-faiss-cpu
-cohere
+# ── Core API framework ──────────────────────────────────────────
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
 python-dotenv
-neo4j
-langgraph
-langsmith
-redis
-structlog
-boto3
-sagemaker
-pypdf
 python-multipart
 slowapi
 
-# Testing
+# ── Auth (JWT signing + password hashing) ───────────────────────
+pyjwt
+bcrypt
+
+# ── LangChain / LangGraph AI stack ──────────────────────────────
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain-google-genai
+langchain-pinecone
+langchain-text-splitters
+langchain-classic
+langgraph
+langsmith
+
+# ── Vector stores & retrieval ────────────────────────────────────
+pinecone-client
+rank-bm25
+
+# ── Reranking ────────────────────────────────────────────────────
+cohere
+
+# ── Graph DB ─────────────────────────────────────────────────────
+neo4j
+
+# ── AWS (boto3 only — SageMaker SDK not needed at API runtime) ───
+boto3
+
+# ── Cache & observability ────────────────────────────────────────
+redis
+structlog
+
+# ── Document processing ──────────────────────────────────────────
+pypdf
+
+# ── Testing ──────────────────────────────────────────────────────
 pytest
 pytest-asyncio
 httpx
+google-auth==2.29.0

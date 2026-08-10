@@ -18,6 +18,7 @@ log = structlog.get_logger()
 # State Definition
 class AgentState(TypedDict):
     request_id: str
+    doctor_id: str # Multi-tenant isolation context
     patient_data: Dict[str, Any]
     rag_chunks: List[str]
     graph_results: Dict[str, Any]
@@ -70,7 +71,7 @@ def rag_node(state: AgentState) -> Dict[str, Any]:
         query = f"Patient presenting with symptoms: {', '.join(patient['symptoms'])}. Previous medical history: {', '.join(patient['comorbidities'])}."
         log.info("rag_node_initial_query", request_id=request_id, query=query)
         
-    chunks = get_relevant_guidelines(query, top_n=5)
+    chunks = get_relevant_guidelines(query, top_n=5, doctor_id=state.get("doctor_id"))
     log.info("rag_node_completed", request_id=request_id, chunks_retrieved=len(chunks))
     return {"rag_chunks": chunks}
 
@@ -83,7 +84,8 @@ def graph_node(state: AgentState) -> Dict[str, Any]:
     # Call the wrapped Neo4j tool
     graph_out = query_knowledge_graph.invoke({
         "patient_medications": patient["medications"],
-        "patient_symptoms": patient["symptoms"]
+        "patient_symptoms": patient["symptoms"],
+        "doctor_id": state.get("doctor_id")
     })
     
     log.info("graph_node_completed", request_id=request_id, critical_interaction_flag=graph_out["critical_interaction_flag"])
@@ -132,6 +134,12 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
     openai_key = Config.OPENAI_API_KEY
     google_key = Config.GOOGLE_API_KEY
     sagemaker_endpoint = Config.SAGEMAKER_ENDPOINT_NAME
+    
+    if os.getenv("TESTING") == "true" or os.getenv("CI") == "true":
+        # Force mock fallback in testing mode for offline stability
+        openai_key = None
+        google_key = None
+        sagemaker_endpoint = None
     
     if sagemaker_endpoint:
         try:

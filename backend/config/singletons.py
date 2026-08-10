@@ -36,6 +36,17 @@ def get_embeddings():
     """Returns a singleton Embeddings instance, falling back to OpenAI if Google keys are missing."""
     global _embeddings
     if _embeddings is None:
+        if os.getenv("TESTING") == "true" or os.getenv("CI") == "true":
+            from langchain_core.embeddings import Embeddings
+            class FakeEmbeddings(Embeddings):
+                def embed_documents(self, texts):
+                    return [[0.1] * 768 for _ in texts]
+                def embed_query(self, text):
+                    return [0.1] * 768
+            logger.info("Initializing offline Mock FakeEmbeddings for testing...")
+            _embeddings = FakeEmbeddings()
+            return _embeddings
+
         google_key = Config.GOOGLE_API_KEY
         openai_key = Config.OPENAI_API_KEY
         
@@ -105,11 +116,12 @@ def get_gemini_chat():
         google_key = Config.GOOGLE_API_KEY
         if google_key and not (google_key.strip().lower().startswith("your_") or "placeholder" in google_key.lower() or not google_key.strip()):
             from langchain_google_genai import ChatGoogleGenerativeAI
-            logger.info("Initializing ChatGoogleGenerativeAI (gemini-2.5-flash) Singleton...")
+            logger.info("Initializing ChatGoogleGenerativeAI (gemini-2.5-flash-lite) Singleton...")
             _gemini_chat = ChatGoogleGenerativeAI(
                 google_api_key=google_key, 
-                model="gemini-2.5-flash", 
-                temperature=0.1
+                model="gemini-2.5-flash-lite", 
+                temperature=0.1,
+                request_timeout=120
             )
         else:
             raise ValueError("Google API key is missing or placeholder. Required for Gemini Chat.")

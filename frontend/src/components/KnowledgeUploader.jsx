@@ -13,6 +13,7 @@ import {
   Layers,
   Sparkles
 } from 'lucide-react';
+import { getApiUrl } from '../config';
 
 export default function KnowledgeUploader() {
   const [documents, setDocuments] = useState([]);
@@ -33,11 +34,18 @@ export default function KnowledgeUploader() {
     fetchDocuments();
   }, []);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('medgraph_access_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   const fetchDocuments = async () => {
     setIsLoadingDocs(true);
     setDocError(null);
     try {
-      const response = await fetch('http://localhost:8000/knowledge/documents');
+      const response = await fetch(getApiUrl('/knowledge/documents'), {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) {
         throw new Error('Failed to retrieve indexed documents list.');
       }
@@ -136,14 +144,18 @@ export default function KnowledgeUploader() {
       if (title.trim()) {
         formData.append('title', title.trim());
       }
-      uploadUrl = 'http://localhost:8000/knowledge/upload/guidelines';
+      uploadUrl = getApiUrl('/knowledge/upload/guidelines');
     } else if (detectedRoute === 'structured') {
       formData.append('file', file);
-      uploadUrl = 'http://localhost:8000/knowledge/upload/structured';
+      uploadUrl = getApiUrl('/knowledge/upload/structured');
     }
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', uploadUrl, true);
+    const token = localStorage.getItem('medgraph_access_token');
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
 
     // Track upload progress
     xhr.upload.onprogress = (event) => {
@@ -188,8 +200,9 @@ export default function KnowledgeUploader() {
     }
     
     try {
-      const response = await fetch(`http://localhost:8000/knowledge/documents/${docId}`, {
-        method: 'DELETE'
+      const response = await fetch(getApiUrl(`/knowledge/documents/${docId}`), {
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
       if (!response.ok) {
         throw new Error('Failed to delete the document.');
@@ -209,13 +222,13 @@ export default function KnowledgeUploader() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
       {/* Upload Zone Panel */}
-      <div className="clinical-card" style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-contrast)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-          <Sparkles size={15} style={{ color: 'var(--accent-cyan)' }} />
+      <div className="clinical-card" style={{ padding: '28px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+          <Sparkles size={16} style={{ color: 'var(--accent-cyan)' }} />
           Knowledge Ingestion Engine
         </h3>
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-          Upload medical research guidelines to seed the Vector RAG DB, or upload drug-drug interaction CSV datasets to extend the Neo4j Knowledge Graph.
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: '1.4' }}>
+          Upload new clinical study literature or institutional treatment guidelines (.pdf, .txt) to seed the Vector RAG DB, or extend the Neo4j drug-drug interaction relationships graph with structured clinical rulesets (.csv).
         </p>
 
         <form onSubmit={handleUploadSubmit} onDragEnter={handleDrag}>
@@ -227,6 +240,7 @@ export default function KnowledgeUploader() {
             onDragLeave={handleDrag}
             onDrop={handleDrop}
             onClick={() => document.getElementById('file-input-element').click()}
+            style={{ minHeight: '180px' }}
           >
             <input 
               id="file-input-element" 
@@ -237,36 +251,36 @@ export default function KnowledgeUploader() {
             />
 
             {!file ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                 <div className="drop-icon-wrapper">
-                  <UploadCloud size={24} style={{ color: 'var(--accent-cyan)' }} />
+                  <UploadCloud size={26} style={{ color: 'var(--accent-cyan)' }} />
                 </div>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-contrast)' }}>
-                  Drag & drop medical files or <span style={{ color: 'var(--accent-cyan)', textDecoration: 'underline', cursor: 'pointer' }}>browse files</span>
+                <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-contrast)' }}>
+                  Drag & drop clinical files or <span style={{ color: 'var(--accent-cyan)', textDecoration: 'underline', cursor: 'pointer' }}>browse system files</span>
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Accepts PDF or TXT (for RAG Vector DB) and CSV (for Neo4j Interactions Graph)
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Supports PDF / TXT (for Semantic RAG) and CSV (for Interactions Graph)
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', width: '100%', justifyContent: 'center' }}>
-                <div className="drop-icon-wrapper" style={{ background: detectedRoute === 'guideline' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(16, 185, 129, 0.1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '500px', margin: '0 auto', justifyContent: 'center' }}>
+                <div className="drop-icon-wrapper" style={{ background: detectedRoute === 'guideline' ? 'rgba(129, 140, 248, 0.1)' : 'rgba(16, 185, 129, 0.1)', border: detectedRoute === 'guideline' ? '1px solid rgba(129, 140, 248, 0.2)' : '1px solid rgba(16, 185, 129, 0.2)' }}>
                   {detectedRoute === 'guideline' ? (
-                    <FileText size={22} style={{ color: 'var(--accent-purple)' }} />
+                    <FileText size={24} style={{ color: 'var(--accent-purple)' }} />
                   ) : (
-                    <Database size={22} style={{ color: 'var(--accent-emerald)' }} />
+                    <Database size={24} style={{ color: 'var(--accent-emerald)' }} />
                   )}
                 </div>
-                <div style={{ textAlign: 'left', flex: 1, maxWidth: '400px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-contrast)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ textAlign: 'left', flex: 1, overflow: 'hidden' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-contrast)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {file.name}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Size: {(file.size / 1024).toFixed(1)} KB | Target: {' '}
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Size: <span style={{ fontFamily: 'var(--font-mono)' }}>{(file.size / 1024).toFixed(1)} KB</span> | Pipeline: {' '}
                     {detectedRoute === 'guideline' ? (
-                      <span style={{ color: 'var(--accent-purple)', fontWeight: '600' }}>Pinecone user_uploads (Vector RAG)</span>
+                      <span className="badge badge-purple" style={{ fontSize: '10px', padding: '1px 6px' }}>Pinecone (RAG Vector)</span>
                     ) : (
-                      <span style={{ color: 'var(--accent-emerald)', fontWeight: '600' }}>Neo4j (Knowledge Graph)</span>
+                      <span className="badge badge-emerald" style={{ fontSize: '10px', padding: '1px 6px' }}>Neo4j (Knowledge Graph)</span>
                     )}
                   </div>
                 </div>
@@ -274,16 +288,16 @@ export default function KnowledgeUploader() {
             )}
           </div>
 
-          {/* Form details / options when file is loaded */}
+          {/* Form details when file is loaded */}
           {file && detectedRoute && (
-            <div style={{ marginTop: '20px', borderTop: '1px solid var(--panel-border)', paddingTop: '16px' }}>
+            <div style={{ marginTop: '24px', borderTop: '1px solid var(--panel-border)', paddingTop: '20px' }}>
               {detectedRoute === 'guideline' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label className="form-label" style={{ display: 'block', marginBottom: '6px' }}>Document Title (For search citations reference)</label>
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="form-label">Guideline Citation Title (For differential analysis matching)</label>
                   <input 
                     type="text" 
                     className="form-input" 
-                    placeholder="Enter custom title or leave default..."
+                    placeholder="e.g. AHA/ACC Chest Pain Guidelines 2021"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     required
@@ -292,146 +306,144 @@ export default function KnowledgeUploader() {
               )}
 
               {validationWarning && (
-                <div className="triage-banner" style={{ background: 'rgba(245, 158, 11, 0.06)', borderColor: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-amber)', fontSize: '11px', marginBottom: '16px', display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '10px 14px', borderRadius: '6px' }}>
-                  <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+                <div className="triage-banner warning" style={{ fontSize: '12px', marginBottom: '20px', padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div>
-                    <strong style={{ display: 'block', marginBottom: '2px' }}>File Validation Warning</strong>
+                    <strong style={{ display: 'block', marginBottom: '4px' }}>File Header Notice</strong>
                     {validationWarning}
                   </div>
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                 <button 
                   type="button" 
                   className="btn btn-secondary" 
                   onClick={() => { setFile(null); setDetectedRoute(null); setValidationWarning(null); }}
-                  style={{ padding: '8px 16px', fontSize: '12px' }}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
                   className="btn btn-primary"
-                  style={{ padding: '8px 16px', fontSize: '12px' }}
                   disabled={uploadStatus === 'uploading' || uploadStatus === 'processing'}
                 >
-                  Confirm Upload & Process
+                  Confirm Ingest Pipeline
                 </button>
               </div>
             </div>
           )}
         </form>
 
-        {/* Upload Progress Bar / Status Alerts */}
+        {/* Ingest Progress Status */}
         {(uploadStatus === 'uploading' || uploadStatus === 'processing') && (
-          <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(14, 165, 233, 0.04)', border: '1px solid rgba(14, 165, 233, 0.1)', borderRadius: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
-              <span style={{ color: 'var(--text-contrast)', fontWeight: '600' }}>
-                {uploadStatus === 'uploading' ? "Uploading to clinical server..." : "Processing & Indexing embeddings..."}
+          <div style={{ marginTop: '24px', padding: '18px', background: 'rgba(14, 165, 233, 0.03)', border: '1px solid rgba(14, 165, 233, 0.15)', borderRadius: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
+              <span style={{ color: 'var(--text-contrast)', fontWeight: '700' }}>
+                {uploadStatus === 'uploading' ? "Transferring file streams..." : "Parsing file structure & generating vector chunk embeddings..."}
               </span>
-              <span style={{ color: 'var(--accent-cyan)' }}>{uploadProgress}%</span>
+              <span style={{ color: 'var(--accent-cyan)', fontWeight: '700', fontFamily: 'var(--font-mono)' }}>{uploadProgress}%</span>
             </div>
-            <div className="confidence-slider-bg" style={{ height: '6px' }}>
+            <div className="confidence-slider-bg" style={{ height: '8px' }}>
               <div 
                 className="confidence-slider-fill" 
-                style={{ width: `${uploadProgress}%`, height: '6px', backgroundColor: 'var(--accent-cyan)' }}
+                style={{ width: `${uploadProgress}%`, height: '8px', backgroundColor: 'var(--accent-cyan)' }}
               ></div>
             </div>
           </div>
         )}
 
         {uploadStatus === 'success' && (
-          <div className="triage-banner" style={{ background: 'rgba(16, 185, 129, 0.06)', borderColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--accent-emerald)', marginTop: '20px', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '6px' }}>
-            <CheckCircle2 size={16} />
-            <div style={{ fontSize: '12px' }}>
-              <strong>Upload Successful:</strong> Document parsed and integrated into databases.
+          <div className="triage-banner" style={{ background: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--accent-emerald)', marginTop: '24px', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', borderRadius: '10px' }}>
+            <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '13px' }}>
+              <strong>Ingestion Success:</strong> Guideline references successfully indexed.
             </div>
           </div>
         )}
 
         {uploadStatus === 'error' && (
-          <div className="triage-banner critical" style={{ marginTop: '20px', display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', borderRadius: '6px' }}>
-            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div style={{ fontSize: '12px' }}>
+          <div className="triage-banner critical" style={{ marginTop: '24px', display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '14px 18px', borderRadius: '10px' }}>
+            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '13px' }}>
               <strong>Ingestion Failed:</strong> {uploadError}
             </div>
           </div>
         )}
       </div>
 
-      {/* Indexed Documents Table Panel (Only Pinecone user guidelines) */}
-      <div className="clinical-card" style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
+      {/* Indexed Documents Table Panel */}
+      <div className="clinical-card" style={{ padding: '28px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
           <div>
-            <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-contrast)' }}>Custom Grounding Guidelines</h3>
-            <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Guidelines vectors active in Pinecone namespace 'user_uploads'</p>
+            <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Custom Guideline Indexes</h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Custom literature vectors indexed in Pinecone namespace <span style={{ fontFamily: 'var(--font-mono)' }}>'user_uploads'</span></p>
           </div>
           <button 
             className="btn btn-secondary btn-icon-only" 
             onClick={fetchDocuments}
             disabled={isLoadingDocs}
-            title="Refresh Guidelines List"
-            style={{ width: '28px', height: '28px' }}
+            title="Refresh Database Index"
+            style={{ width: '32px', height: '32px' }}
           >
-            <RefreshCw size={12} className={isLoadingDocs ? 'spin-animation' : ''} />
+            <RefreshCw size={14} className={isLoadingDocs ? 'spin-animation' : ''} />
           </button>
         </div>
 
         {isLoadingDocs ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '40px 0' }}>
-            <RefreshCw size={24} className="spin-animation" style={{ color: 'var(--text-muted)' }} />
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Retrieving indexes stats...</span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '48px 0' }}>
+            <RefreshCw size={26} className="spin-animation" style={{ color: 'var(--text-muted)' }} />
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Querying index namespace stats...</span>
           </div>
         ) : docError ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-rose)', fontSize: '12px', padding: '20px 0', justifyContent: 'center' }}>
-            <AlertTriangle size={14} />
-            Failed to retrieve indexed custom guidelines: {docError}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-rose)', fontSize: '13px', padding: '24px 0', justifyContent: 'center' }}>
+            <AlertTriangle size={16} />
+            Ingestion registry unreachable: {docError}
           </div>
         ) : documents.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '40px 0', border: '1px dashed var(--panel-border)', borderRadius: '6px' }}>
-            <FileText size={32} style={{ color: 'var(--text-muted)' }} />
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '500' }}>No custom guidelines indexed yet</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Ingested documents will appear in grounding searches immediately.</div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '48px 0', border: '1px dashed var(--panel-border)', borderRadius: '10px' }}>
+            <FileText size={36} style={{ color: 'var(--text-muted)' }} />
+            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>No Custom Guidelines Sourced</div>
+            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Indexed documents will instantly ground diagnostic reasoning loops.</div>
           </div>
         ) : (
-          <div className="history-table-container" style={{ margin: 0, maxHeight: '300px', overflowY: 'auto' }}>
-            <table className="history-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <div className="history-table-container" style={{ margin: 0, maxHeight: '350px', overflowY: 'auto' }}>
+            <table className="history-table">
               <thead>
                 <tr>
-                  <th className="history-th" style={{ padding: '8px 12px', fontSize: '11px' }}>Title</th>
-                  <th className="history-th" style={{ padding: '8px 12px', fontSize: '11px' }}>Filename</th>
-                  <th className="history-th" style={{ padding: '8px 12px', fontSize: '11px', textAlign: 'center' }}>Chunks</th>
-                  <th className="history-th" style={{ padding: '8px 12px', fontSize: '11px' }}>Uploaded At</th>
-                  <th className="history-th" style={{ padding: '8px 12px', fontSize: '11px', textAlign: 'right' }}>Actions</th>
+                  <th className="history-th" style={{ padding: '10px 16px', fontSize: '11px' }}>Citation Reference Title</th>
+                  <th className="history-th" style={{ padding: '10px 16px', fontSize: '11px' }}>Ingested Filename</th>
+                  <th className="history-th" style={{ padding: '10px 16px', fontSize: '11px', textAlign: 'center' }}>Vectors</th>
+                  <th className="history-th" style={{ padding: '10px 16px', fontSize: '11px' }}>Ingestion Date</th>
+                  <th className="history-th" style={{ padding: '10px 16px', fontSize: '11px', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.map((doc) => (
                   <tr key={doc.document_id} className="history-tr">
-                    <td className="history-td" style={{ padding: '8px 12px', fontSize: '12px' }}>
-                      <strong>{doc.title}</strong>
+                    <td className="history-td" style={{ padding: '12px 16px' }}>
+                      <strong style={{ color: 'var(--text-contrast)' }}>{doc.title}</strong>
                     </td>
-                    <td className="history-td" style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    <td className="history-td" style={{ padding: '12px 16px', fontSize: '12px' }}>
                       {doc.filename}
                     </td>
-                    <td className="history-td" style={{ padding: '8px 12px', fontSize: '11px', textAlign: 'center' }}>
-                      <span className="badge badge-outline" style={{ fontSize: '10px', padding: '1px 5px' }}>
+                    <td className="history-td" style={{ padding: '12px 16px', textAlign: 'center' }}>
+                      <span className="badge badge-outline" style={{ fontSize: '10.5px', padding: '2px 8px', fontFamily: 'var(--font-mono)' }}>
                         {doc.chunks} chunks
                       </span>
                     </td>
-                    <td className="history-td" style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <td className="history-td" style={{ padding: '12px 16px', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
                       {formatDateTime(doc.uploaded_at)}
                     </td>
-                    <td className="history-td" style={{ padding: '8px 12px', textAlign: 'right' }}>
+                    <td className="history-td" style={{ padding: '12px 16px', textAlign: 'right' }}>
                       <button 
                         className="btn btn-secondary" 
                         onClick={() => handleDeleteDoc(doc.document_id)}
                         title="Delete Guideline Vectors"
-                        style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--accent-rose)', borderColor: 'rgba(244, 63, 94, 0.15)' }}
+                        style={{ padding: '6px 12px', fontSize: '12.5px', color: 'var(--accent-rose)', borderColor: 'rgba(244, 63, 94, 0.2)' }}
                       >
-                        <Trash2 size={12} style={{ marginRight: '4px' }} />
-                        Delete
+                        <Trash2 size={13} style={{ marginRight: '4px' }} />
+                        Purge Index
                       </button>
                     </td>
                   </tr>

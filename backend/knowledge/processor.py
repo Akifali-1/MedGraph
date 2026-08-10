@@ -17,7 +17,7 @@ from backend.graph.client import MOCK_INTERACTIONS
 
 logger = logging.getLogger(__name__)
 
-def process_guideline(file_bytes: bytes, filename: str, title: str = None) -> dict:
+def process_guideline(file_bytes: bytes, filename: str, title: str = None, doctor_id: str = None) -> dict:
     """
     Ingests, chunks, embeds, and indexes clinical guideline document (PDF or TXT) into Pinecone.
     """
@@ -72,19 +72,21 @@ def process_guideline(file_bytes: bytes, filename: str, title: str = None) -> di
         )
         documents.append(doc)
 
-    # 5. Embed and Index into Pinecone (namespace user_uploads)
+    # 5. Embed and Index into Pinecone (namespace user_uploads_doc_id)
     embeddings = get_embeddings()
     index_name = Config.PINECONE_INDEX_NAME
     
     # Initialize index connection to make sure it exists
     get_pinecone_index()
     
-    logger.info(f"Upserting {len(documents)} chunks to Pinecone index '{index_name}' in namespace 'user_uploads'...")
+    user_namespace = f"user_uploads_doc_{doctor_id}" if doctor_id else "user_uploads"
+    
+    logger.info(f"Upserting {len(documents)} chunks to Pinecone index '{index_name}' in namespace '{user_namespace}'...")
     PineconeVectorStore.from_documents(
         documents,
         embeddings,
         index_name=index_name,
-        namespace="user_uploads"
+        namespace=user_namespace
     )
     
     return {
@@ -93,7 +95,7 @@ def process_guideline(file_bytes: bytes, filename: str, title: str = None) -> di
         "title": title
     }
 
-def process_ddi_csv(file_bytes: bytes) -> dict:
+def process_ddi_csv(file_bytes: bytes, doctor_id: str = None) -> dict:
     """
     Parses drug-drug interactions from CSV and upserts them to Neo4j database.
     CSV Columns: drug1, drug2, severity, effect
@@ -126,7 +128,7 @@ def process_ddi_csv(file_bytes: bytes) -> dict:
     client = get_neo4j_client()
     
     if client.use_mock:
-        logger.info("Neo4j client is in MOCK mode. Appending DDI to local cache list.")
+        logger.info(f"Neo4j client is in MOCK mode. Appending DDI to local cache list under doctor context '{doctor_id}'.")
         for row in rows:
             d1 = row["drug1"].strip()
             d2 = row["drug2"].strip()
@@ -146,7 +148,9 @@ def process_ddi_csv(file_bytes: bytes) -> dict:
                     "dr1.name": d1,
                     "dr2.name": d2,
                     "r.severity": severity,
-                    "r.effect": effect
+                    "r.effect": effect,
+                    "r.scope": "private" if doctor_id else "global",
+                    "r.doctor_id": doctor_id
                 })
                 edges_created += 1
             
@@ -155,7 +159,9 @@ def process_ddi_csv(file_bytes: bytes) -> dict:
                     "dr1.name": d2,
                     "dr2.name": d1,
                     "r.severity": severity,
-                    "r.effect": effect
+                    "r.effect": effect,
+                    "r.scope": "private" if doctor_id else "global",
+                    "r.doctor_id": doctor_id
                 })
                 edges_created += 1
 
@@ -164,7 +170,8 @@ def process_ddi_csv(file_bytes: bytes) -> dict:
         # Estimate mock nodes created
         nodes_created = len(set(r["drug1"].strip().lower() for r in rows) | set(r["drug2"].strip().lower() for r in rows))
     else:
-        logger.info("Writing drug-drug interactions to live Neo4j database...")
+        scope = "private" if doctor_id else "global"
+        logger.info(f"Writing drug-drug interactions with scope '{scope}' for doctor '{doctor_id}' to live Neo4j database...")
         with client.driver.session() as session:
             for row in rows:
                 d1 = row["drug1"].strip()
@@ -192,15 +199,15 @@ def process_ddi_csv(file_bytes: bytes) -> dict:
                 )
                 nodes_created += res2.consume().counters.nodes_created
 
-                # Create bidirectional relations
+                # Create bidirectional relations with scoping metadata
                 # Direction 1: d1 -> d2
                 res_rel1 = session.run(
                     """
                     MATCH (dr1:Drug {name: $d1})
                     MATCH (dr2:Drug {name: $d2})
-                    MERGE (dr1)-[r:INTERACTS_WITH {severity: $severity, effect: $effect}]->(dr2)
+                    MERGE (dr1)-[r:INTERACTS_WITH {severity: $severity, effect: $effect, scope: $scope, doctor_id: $doctor_id}]->(dr2)
                     """,
-                    {"d1": d1, "d2": d2, "severity": severity, "effect": effect}
+                    {"d1": d1, "d2": d2, "severity": severity, "effect": effect, "scope": scope, "doctor_id": doctor_id}
                 )
                 edges_created += res_rel1.consume().counters.relationships_created
 
@@ -209,12 +216,11 @@ def process_ddi_csv(file_bytes: bytes) -> dict:
                     """
                     MATCH (dr1:Drug {name: $d2})
                     MATCH (dr2:Drug {name: $d1})
-                    MERGE (dr1)-[r:INTERACTS_WITH {severity: $severity, effect: $effect}]->(dr2)
+                    MERGE (dr1)-[r:INTERACTS_WITH {severity: $severity, effect: $effect, scope: $scope, doctor_id: $doctor_id}]->(dr2)
                     """,
-                    {"d1": d1, "d2": d2, "severity": severity, "effect": effect}
+                    {"d1": d1, "d2": d2, "severity": severity, "effect": effect, "scope": scope, "doctor_id": doctor_id}
                 )
                 edges_created += res_rel2.consume().counters.relationships_created
-
 
                 rows_processed += 1
 
@@ -224,20 +230,22 @@ def process_ddi_csv(file_bytes: bytes) -> dict:
         "edges_created": edges_created
     }
 
-def list_user_documents() -> List[Dict[str, Any]]:
+def list_user_documents(doctor_id: str = None) -> List[Dict[str, Any]]:
     """
-    Lists all guidelines currently indexed in the 'user_uploads' namespace of Pinecone.
+    Lists all guidelines currently indexed in the specific namespace of Pinecone for the doctor.
     """
     try:
         index = get_pinecone_index()
         embeddings = get_embeddings()
         emb_dim = len(embeddings.embed_query("test"))
         
+        user_namespace = f"user_uploads_doc_{doctor_id}" if doctor_id else "user_uploads"
+        
         query_response = index.query(
             vector=[0.0] * emb_dim,
             top_k=10000,
             include_metadata=True,
-            namespace="user_uploads"
+            namespace=user_namespace
         )
         
         matches = query_response.get("matches", [])
@@ -261,17 +269,18 @@ def list_user_documents() -> List[Dict[str, Any]]:
         sorted_docs = sorted(docs.values(), key=lambda x: x["uploaded_at"], reverse=True)
         return sorted_docs
     except Exception as e:
-        logger.error(f"Failed to list user documents from Pinecone: {e}")
+        logger.error(f"Failed to list user documents from Pinecone namespace '{user_namespace}': {e}")
         return []
 
-def delete_user_document(document_id: str) -> bool:
+def delete_user_document(document_id: str, doctor_id: str = None) -> bool:
     """
-    Deletes all vector chunks belonging to the given document_id in Pinecone user_uploads.
+    Deletes all vector chunks belonging to the given document_id in Pinecone user_uploads for a doctor.
     """
     try:
         index = get_pinecone_index()
-        index.delete(filter={"document_id": document_id}, namespace="user_uploads")
+        user_namespace = f"user_uploads_doc_{doctor_id}" if doctor_id else "user_uploads"
+        index.delete(filter={"document_id": document_id}, namespace=user_namespace)
         return True
     except Exception as e:
-        logger.error(f"Failed to delete document {document_id} from Pinecone: {e}")
+        logger.error(f"Failed to delete document {document_id} from Pinecone namespace '{user_namespace}': {e}")
         raise e

@@ -1,6 +1,8 @@
 # MedGraph AI — Clinical Decision Support System (CDSS)
 
-MedGraph AI is a production-grade Clinical Decision Support System (CDSS) that unifies structured biomedical knowledge graphs with dense vector guideline indexes to enable explainable clinical reasoning. The system is designed to act as an auditable co-pilot for healthcare practitioners by querying standard drug-drug interactions (Neo4j) and clinical practice guidelines (Pinecone RAG) to generate grounded diagnostic assessments using fine-tuned generative LLMs (AWS SageMaker).
+MedGraph AI is a portfolio-grade Clinical Decision Support System (CDSS) prototype, built on a production-oriented architecture, that unifies structured biomedical knowledge graphs with dense vector guideline indexes to enable explainable clinical reasoning. The system acts as an auditable co-pilot for healthcare practitioners by querying standard drug-drug interactions (Neo4j) and clinical practice guidelines (Pinecone RAG) to generate grounded diagnostic assessments using fine-tuned generative LLMs (AWS SageMaker).
+
+> **Note:** This is a demonstration prototype for research and portfolio purposes — not a certified medical device. See the [Disclaimer](#️-disclaimer) below.
 
 ---
 
@@ -62,69 +64,94 @@ MedGraph AI operates on a Dual-System architecture that prioritizes safety, cita
 
 ### 1. Prerequisites
 Ensure you have the following installed locally:
-* Python 3.12+
-* Node.js 20+
-* Docker & Docker Compose
-* Running Redis and Neo4j instances (or spin them up using Docker)
+* **Python 3.10, 3.11, or 3.12** *(Note: Python 3.13+ is currently unsupported by `simsimd`/`langchain-pinecone` dependencies)*
+* **Node.js 20+** (includes `npm`)
+* Docker & Docker Compose (optional for containerized deployment)
 
 ### 2. Install Dependencies
-Clone the repository, create a virtual environment, and install dependencies:
-```bash
-# Clone
+
+#### Backend Setup
+```powershell
+# Clone the repository
 git clone https://github.com/Akifali-1/MedGraph.git
 cd MedGraph
 
-# Backend Setup
+# Create a virtual environment using Python 3.11 or 3.12
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
 
-# Frontend Setup
+# Activate the virtual environment
+# Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
+# macOS/Linux:
+# source .venv/bin/activate
+
+# Upgrade pip and install backend packages into .venv
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+#### Frontend Setup
+```powershell
 cd frontend
 npm install
 cd ..
 ```
+> 💡 **Windows Tip:** If `npm` is not recognized in your terminal, close and restart VS Code after installing Node.js so PowerShell reloads your system `PATH`.
 
-### 3. Setup Environment
-Copy the environment template and populate it with your API keys:
+### 3. Setup Environment Variables
+Copy `.env.example` to `.env` and populate your credentials:
 ```bash
 cp .env.example .env
 ```
-Ensure you provide correct keys for:
-* `GOOGLE_API_KEY` (Gemini API access)
-* `PINECONE_API_KEY` (Pinecone credentials)
-* `NEO4J_PASSWORD` (Neo4j instance access)
+Key configuration parameters in `.env`:
+* `GOOGLE_API_KEY`: Gemini API key ([Get key from Google AI Studio](https://aistudio.google.com/app/api-keys))
+* `PINECONE_API_KEY` & `PINECONE_INDEX_NAME`: Pinecone Vector DB credentials
+* `NEO4J_URI`: `neo4j+s://<YOUR_INSTANCE_ID>.databases.neo4j.io`
+* `NEO4J_USERNAME`: `neo4j`
+* `NEO4J_PASSWORD`: Your Neo4j Aura database password
 
 ---
 
 ## 🚀 Running locally
 
-### Option A: Using Docker Compose (Recommended)
+### Option A: Bare-Metal Local Development Setup (Recommended)
+
+1. **Launch Backend API server:**
+   Make sure your `.venv` is activated, then start the server using `python` (not `py` on Windows):
+   ```powershell
+   # Windows PowerShell:
+   .\.venv\Scripts\Activate.ps1
+   python run.py
+
+   # Or run directly via the venv python executable:
+   .\.venv\Scripts\python.exe run.py
+   ```
+   * **Backend API Gateway:** [http://localhost:8000](http://localhost:8000)
+   * **Interactive Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
+   * **Health Check:** [http://localhost:8000/health](http://localhost:8000/health)
+
+2. **Launch Frontend Vite dev server:**
+   In a separate terminal window:
+   ```powershell
+   cd frontend
+   npm run dev
+   ```
+   * **Frontend Web App:** [http://localhost:5173](http://localhost:5173)
+
+3. **(Optional) Seed Neo4j Knowledge Graph:**
+   ```powershell
+   python backend/graph/seed.py
+   python backend/graph/seed_rxnav.py
+   ```
+   *(Note: If Neo4j or Redis are not running, MedGraph automatically falls back to built-in in-memory graph & cache representations without crashing).*
+
+### Option B: Using Docker Compose
 This spins up Redis, Neo4j, the FastAPI backend, and the React frontend in containerized environments:
 ```bash
 docker-compose up --build
 ```
 * **Frontend Web Console:** [http://localhost/](http://localhost/)
 * **Backend API Gateway:** [http://localhost:8000/docs](http://localhost:8000/docs)
-* **Neo4j Browser:** [http://localhost:7474/](http://localhost:7474/)
-
-### Option B: Bare-Metal Development Setup
-1. **Start Redis and Neo4j services** locally.
-2. **Seed Neo4j standard datasets:**
-   ```bash
-   python backend/graph/seed_csv.py
-   python backend/graph/seed_rxnav.py
-   python backend/graph/seed_columbia.py
-   ```
-3. **Launch Backend API server:**
-   ```bash
-   python -u run.py
-   ```
-4. **Launch Frontend Vite dev server:**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
 
 ---
 

@@ -1,0 +1,609 @@
+/* ============================================================
+   THE CASE DOCUMENT
+   The landing page is a clinical case worked in front of the reader.
+   Structure is a document with a margin column, not a marketing page:
+   no hero, no feature grid, no cards. Rules and set width do the work.
+   ============================================================ */
+
+.doc {
+  position: relative;
+  padding-bottom: 8rem;
+  font-family: var(--font-sans);
+}
+
+/* Two columns: margin apparatus on the left, case body on the right.
+   The margin is where the system annotates its own work. */
+.doc-page {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 660px);
+  gap: 0 56px;
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.doc-margin {
+  position: relative;
+  padding-top: 0.4rem;
+  text-align: right;
+}
+
+.doc-body {
+  position: relative;
+  min-width: 0;
+}
+
+/* ---------- Masthead ---------- */
+
+.doc-masthead {
+  border-bottom: 1px solid var(--rule-strong);
+  padding: 3.5rem 0 1rem;
+  margin-bottom: 2.5rem;
+}
+
+.doc-masthead-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.doc-masthead h1 {
+  color: var(--text-contrast);
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 3.4vw, 2.6rem);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+}
+
+.doc-masthead h1 em {
+  font-style: italic;
+  font-weight: 300;
+}
+
+.doc-stamp {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---------- Intake block ---------- */
+
+.doc-intake {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 2rem;
+  margin-bottom: 2.5rem;
+}
+
+.doc-intake dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.65rem 1.5rem;
+}
+
+.doc-intake dt {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding-top: 0.2rem;
+}
+
+.doc-intake dd {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
+/* A resolved clinical term: the system rewrites the patient's words. */
+.term {
+  position: relative;
+  white-space: nowrap;
+}
+
+.term-raw {
+  position: relative;
+  display: inline-block;
+}
+
+/* Strike drawn by GSAP via scaleX on a pseudo-free element */
+.term-strike {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 52%;
+  height: 1px;
+  background: var(--accent-cyan);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.term-canon {
+  display: inline-block;
+  margin-left: 0.4em;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+  opacity: 0;
+}
+
+/* ---------- Section movements ---------- */
+
+.doc-move {
+  padding: 3.25rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.doc-move:last-of-type {
+  border-bottom: none;
+}
+
+.doc-move h2 {
+  margin-bottom: 1.1rem;
+  color: var(--text-contrast);
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  line-height: 1.18;
+}
+
+.doc-move h2 em {
+  font-style: italic;
+  font-weight: 300;
+}
+
+.doc-move p {
+  margin-bottom: 1.05rem;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  line-height: 1.68;
+}
+
+.doc-move p:last-child {
+  margin-bottom: 0;
+}
+
+.doc-move p .lead-in {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-right: 0.6em;
+}
+
+/* ---------- Margin apparatus ---------- */
+
+.doc-note {
+  margin-bottom: 1.6rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.doc-note-label {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.doc-note cite {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-style: normal;
+}
+
+.doc-note-quote {
+  border-right: 2px solid var(--accent-cyan);
+  padding-right: 0.85rem;
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+/* Sticky margin figures track their section while it is in view. */
+.doc-sticky {
+  position: sticky;
+  top: calc(var(--header-height) + 2.5rem);
+}
+
+/* ---------- The interruption ---------- */
+
+/* Full-bleed halt. The pipeline genuinely short-circuits here, so the
+   document does too: the measure breaks and the page changes colour. */
+.doc-halt {
+  position: relative;
+  margin: 0;
+  padding: 4.5rem 0;
+  background: var(--console-bg);
+  color: #f2ece0;
+  overflow: hidden;
+}
+
+.doc-halt-inner {
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.doc-halt-rule {
+  height: 2px;
+  background: var(--accent-rose);
+  transform: scaleX(0);
+  transform-origin: left;
+  margin-bottom: 2.25rem;
+}
+
+.doc-halt-tag {
+  display: block;
+  margin-bottom: 1.4rem;
+  color: var(--accent-rose);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.doc-halt h2 {
+  max-width: 22ch;
+  margin-bottom: 1.5rem;
+  color: #fbf7ef;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4.6vw, 3.25rem);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+}
+
+.doc-halt h2 em {
+  font-style: italic;
+}
+
+.doc-halt-pair {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin: 2.25rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  letter-spacing: 0.04em;
+}
+
+.doc-halt-drug {
+  padding: 0.55rem 1rem;
+  border: 1px solid rgba(212, 118, 127, 0.5);
+  color: #f2ece0;
+}
+
+.doc-halt-op {
+  color: var(--accent-rose);
+}
+
+.doc-halt-verdict {
+  margin-left: auto;
+  color: var(--accent-rose);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.doc-halt-body {
+  max-width: 56ch;
+  color: #c8c0b1;
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  line-height: 1.68;
+}
+
+.doc-halt-trace {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #3a372c;
+  color: #8b8474;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 2;
+}
+
+.doc-halt-trace span {
+  display: block;
+}
+
+.doc-halt-trace .ok {
+  color: #7fae90;
+}
+
+.doc-halt-trace .stop {
+  color: var(--accent-rose);
+}
+
+/* ---------- Differential table ---------- */
+
+.doc-dx {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.doc-dx caption {
+  margin-bottom: 0.9rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.11em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.doc-dx th {
+  border-bottom: 1px solid var(--rule-strong);
+  padding: 0 0 0.6rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.doc-dx th:last-child,
+.doc-dx td:last-child {
+  text-align: right;
+}
+
+.doc-dx td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.95rem 0;
+  vertical-align: baseline;
+}
+
+.doc-dx .dx-name {
+  color: var(--text-contrast);
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+}
+
+.doc-dx .dx-src {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+.doc-dx .dx-score {
+  color: var(--text-contrast);
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+}
+
+/* Confidence bar: a hairline, not a filled dashboard track. */
+.dx-bar {
+  display: block;
+  width: 100%;
+  max-width: 96px;
+  height: 1px;
+  margin-top: 0.45rem;
+  margin-left: auto;
+  background: var(--rule);
+  position: relative;
+}
+
+.dx-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  height: 100%;
+  background: var(--accent-cyan);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+/* ---------- Closing ---------- */
+
+.doc-close {
+  padding: 4.5rem 0 0;
+}
+
+.doc-close h2 {
+  max-width: 20ch;
+  margin-bottom: 1.25rem;
+  color: var(--text-contrast);
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 3.4vw, 2.6rem);
+  font-weight: 300;
+  letter-spacing: -0.018em;
+  line-height: 1.12;
+}
+
+.doc-close h2 em {
+  font-style: italic;
+}
+
+.doc-close p {
+  max-width: 54ch;
+  margin-bottom: 2rem;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  line-height: 1.68;
+}
+
+/* Editorial CTA: a ruled link, not a pill button. */
+.doc-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0;
+  border: none;
+  border-bottom: 1px solid var(--accent-cyan);
+  background: none;
+  cursor: pointer;
+  color: var(--accent-cyan);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 500;
+  transition: gap var(--dur-mid) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.doc-cta svg {
+  transition: transform var(--dur-mid) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .doc-cta:hover {
+    color: var(--accent-strong);
+  }
+  .doc-cta:hover svg {
+    transform: translateX(4px);
+  }
+}
+
+.doc-cta:active {
+  transform: translateY(1px);
+}
+
+.doc-cta-row {
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+  flex-wrap: wrap;
+}
+
+.doc-cta-secondary {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--rule);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .doc-cta-secondary:hover {
+    color: var(--text-primary);
+  }
+}
+
+/* ---------- Colophon ---------- */
+
+.doc-colophon {
+  margin-top: 5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+}
+
+/* ---------- Progress ---------- */
+
+.doc-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 130;
+  height: 1px;
+  background: var(--accent-cyan);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+  .doc-page {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    max-width: 640px;
+  }
+
+  /* Margin apparatus becomes inline apparatus, set apart by a rule. */
+  .doc-margin {
+    text-align: left;
+    padding: 1.25rem 0 0;
+    border-left: 2px solid var(--rule);
+    padding-left: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .doc-note-quote {
+    border-right: none;
+    border-left: none;
+    padding-right: 0;
+  }
+
+  .doc-sticky {
+    position: static;
+  }
+
+  .doc-halt-verdict {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .doc-page,
+  .doc-halt-inner {
+    padding: 0 20px;
+  }
+
+  .doc-intake dl {
+    grid-template-columns: 1fr;
+    gap: 0.25rem 0;
+  }
+
+  .doc-intake dd {
+    margin-bottom: 0.75rem;
+  }
+
+  .doc-dx .dx-src {
+    display: none;
+  }
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .term-strike,
+  .dx-bar i,
+  .doc-halt-rule {
+    transform: scaleX(1);
+  }
+
+  .term-canon {
+    opacity: 1;
+  }
+}

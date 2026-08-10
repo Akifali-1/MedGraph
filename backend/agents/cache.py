@@ -16,6 +16,12 @@ class RedisCacheManager:
         self.client = None
         self.use_fallback = True
         
+        import os
+        if os.getenv("CI") == "true" or os.getenv("TESTING") == "true" or os.getenv("MOCK_REDIS") == "true":
+            self.use_fallback = True
+            logger.warning("MOCK_REDIS/CI/Testing environment active. Bypassing Redis initialization and using local in-memory fallback cache.")
+            return
+
         try:
             from backend.config.singletons import get_redis_client
             self.client = get_redis_client()
@@ -24,21 +30,13 @@ class RedisCacheManager:
             self.use_fallback = False
             logger.info("Connected to Redis cache successfully.")
         except Exception as e:
-            import os
-            if os.getenv("CI") == "true" or os.getenv("TESTING") == "true" or os.getenv("MOCK_REDIS") == "true":
-                self.use_fallback = True
-                logger.warning(
-                    f"CI/Test environment detected. Could not connect to Redis cache: {e}. "
-                    "Falling back to local in-memory query cache for offline testing."
-                )
-            else:
-                raise RuntimeError(
-                    f"Fail-fast startup check: Could not connect to Redis cache: {e}. "
-                    "Redis server must be running."
-                )
+            logger.warning(
+                f"Redis unavailable: {e}. Degrading to in-memory cache."
+            )
+            self.use_fallback = True
 
-    def _generate_key(self, patient: PatientInput) -> str:
-        """Generates a deterministic MD5 hash key for patient symptoms and medications."""
+    def _generate_key(self, patient: PatientInput, doctor_id: Optional[str] = None) -> str:
+        """Generates a deterministic MD5 hash key for patient details and doctor context."""
         # Sort values to ensure key consistency
         sorted_symptoms = sorted([s.strip().lower() for s in patient.symptoms])
         sorted_medications = sorted([m.strip().lower() for m in patient.medications])
@@ -48,14 +46,15 @@ class RedisCacheManager:
             "symptoms": sorted_symptoms,
             "medications": sorted_medications,
             "age": patient.age,
-            "sex": patient.sex.upper()
+            "sex": patient.sex.upper(),
+            "doctor_id": doctor_id or "global"
         }
         serialized = json.dumps(payload, sort_keys=True)
         return hashlib.md5(serialized.encode("utf-8")).hexdigest()
 
-    def get(self, patient: PatientInput) -> Optional[Dict[str, Any]]:
-        """Retrieves cached result if matches exist."""
-        key = self._generate_key(patient)
+    def get(self, patient: PatientInput, doctor_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Retrieves cached result if matches exist under specific doctor context."""
+        key = self._generate_key(patient, doctor_id)
         
         if self.use_fallback:
             if key in _local_cache:
@@ -72,9 +71,9 @@ class RedisCacheManager:
             logger.error(f"Redis cache read error: {e}")
         return None
 
-    def set(self, patient: PatientInput, val: Dict[str, Any], ttl_seconds: int = 86400):
-        """Saves output to cache."""
-        key = self._generate_key(patient)
+    def set(self, patient: PatientInput, val: Dict[str, Any], doctor_id: Optional[str] = None, ttl_seconds: int = 86400):
+        """Saves output to cache under doctor context."""
+        key = self._generate_key(patient, doctor_id)
         
         if self.use_fallback:
             _local_cache[key] = val
@@ -90,9 +89,9 @@ class RedisCacheManager:
 # Instantiate global cache manager
 cache_manager = RedisCacheManager()
 
-def diagnose_patient(patient: PatientInput, request_id: Optional[str] = None) -> Dict[str, Any]:
+def diagnose_patient(patient: PatientInput, request_id: Optional[str] = None, doctor_id: Optional[str] = None) -> Dict[str, Any]:
     """Retrieves cached diagnoses, or invokes the LangGraph orchestrator on cache miss."""
-    cached_result = cache_manager.get(patient)
+    cached_result = cache_manager.get(patient, doctor_id)
     if cached_result:
         return cached_result
         
@@ -105,6 +104,7 @@ def diagnose_patient(patient: PatientInput, request_id: Optional[str] = None) ->
     # Initialize state dictionary
     initial_state = {
         "request_id": request_id,
+        "doctor_id": doctor_id or "global",
         "patient_data": patient.model_dump(),
         "rag_chunks": [],
         "graph_results": {},
@@ -124,6 +124,6 @@ def diagnose_patient(patient: PatientInput, request_id: Optional[str] = None) ->
     
     # Store in cache
     if output:
-        cache_manager.set(patient, output)
+        cache_manager.set(patient, output, doctor_id)
         
     return output

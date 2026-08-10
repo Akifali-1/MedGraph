@@ -124,6 +124,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Enable CORS for local frontend dev server & cross-origin requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Set limiter in app state
 app.state.limiter = limiter
 

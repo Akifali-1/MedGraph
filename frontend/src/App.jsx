@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Activity, 
   ShieldAlert, 
@@ -11,8 +11,6 @@ import {
   ArrowRight, 
   Plus, 
   X, 
-  Lock, 
-  Mail, 
   User, 
   CheckCircle2, 
   RotateCcw, 
@@ -37,7 +35,16 @@ import CinematicLanding from './components/CinematicLanding';
 import HowItWorks from './components/HowItWorks';
 import PatientWorkspace from './components/PatientWorkspace';
 import KnowledgeUploader from './components/KnowledgeUploader';
+import AboutPage from './components/AboutPage';
+import EvidenceLibraryPage from './components/EvidenceLibraryPage';
+import ContactPage from './components/ContactPage';
 import { getApiUrl } from './config';
+
+const PUBLIC_VIEWS = ['landing', 'how', 'about', 'library', 'contact', 'auth'];
+const PAGE_TITLES = {
+  landing: 'Clinical Decision Support', how: 'How It Works', about: 'About',
+  library: 'Evidence Library', contact: 'Contact', auth: 'Sign In', dashboard: 'Workspace',
+};
 
 // Pre-seeded patient case history logs for practitioner demonstration
 const INITIAL_HISTORY = [
@@ -110,15 +117,89 @@ const INITIAL_HISTORY = [
   }
 ];
 
+const isTokenExpired = (token) => {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return true;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+    if (!payload.exp) return false;
+    return (payload.exp * 1000) <= (Date.now() + 60000); // 60-second safety window
+  } catch {
+    return true;
+  }
+};
+
+const getInitialHistoryForUser = (user) => (
+  user?.role === 'medical_practitioner'
+  && user?.email?.toLowerCase() === 'e.carter@medgraph.ai'
+    ? INITIAL_HISTORY
+    : []
+);
+
+const getPatientDisplayId = (user) => {
+  if (!user?.sub) return 'PATIENT';
+  return `PAT-${user.sub.replace(/^usr_/, '').slice(-8).toUpperCase()}`;
+};
+
+const SERVICE_LABELS = [
+  { key: 'neo4j', label: 'Neo4j' },
+  { key: 'pinecone', label: 'Pinecone' },
+  { key: 'redis', label: 'Redis' },
+  { key: 'sagemaker', label: 'SageMaker' },
+];
+
+const getServiceState = (value) => {
+  const text = String(value || '').toLowerCase();
+  if (!text) return 'checking';
+  if (text.includes('not_configured')) return 'inactive';
+  if (text.includes('unhealthy')) return 'offline';
+  if (text.includes('mock')) return 'mock';
+  if (text.includes('healthy')) return 'online';
+  return 'offline';
+};
+
+function ServiceStatus({ label, value }) {
+  const state = getServiceState(value);
+  const stateLabels = {
+    checking: 'checking',
+    online: 'online',
+    mock: 'mock',
+    inactive: 'off',
+    offline: 'offline',
+  };
+
+  return (
+    <span className={`service-status service-status-${state}`} title={`${label}: ${value || 'checking'}`}>
+      <i className="service-status-dot" />
+      <span>{label}</span>
+      <small>{stateLabels[state]}</small>
+    </span>
+  );
+}
+
 function App() {
   // Navigation & Page State
-  const [view, setView] = useState('landing'); // 'landing' | 'auth' | 'dashboard'
+  const [view, setView] = useState(() => {
+    const page = window.location.hash.slice(1);
+    return PUBLIC_VIEWS.includes(page) ? page : 'landing';
+  });
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('medgraph_theme') || 'light'); // 'dark' | 'light'
   const [role, setRole] = useState('doctor'); // 'doctor' | 'patient'
   const [authToken, setAuthToken] = useState('');
   const [authError, setAuthError] = useState('');
+  const [serviceHealth, setServiceHealth] = useState(null);
   const [practitioner, setPractitioner] = useState({
     name: 'Dr. Evelyn Carter, MD',
     npi: '1982736450',
@@ -133,94 +214,179 @@ function App() {
     roleRef.current = role;
   }, [role]);
 
+  const mapUiRoleToApiRole = (uiRole) => (
+    uiRole === 'doctor' ? 'medical_practitioner' : 'patient'
+  );
+
+  const applyAuthenticatedSession = (data, navigateToDashboard = true) => {
+    resetWorkspaceState(data.user);
+    setAuthToken(data.access_token);
+    setAuthError('');
+    setCurrentUser(data.user);
+    localStorage.setItem('medgraph_access_token', data.access_token);
+    localStorage.setItem('medgraph_user', JSON.stringify(data.user));
+
+    if (data.user.role === 'medical_practitioner') {
+      setRole('doctor');
+      setPractitioner({
+        name: data.user.name || '',
+        npi: data.user.npi || '',
+        email: data.user.email || '',
+        clinic: data.user.clinic || ''
+      });
+    } else {
+      setRole('patient');
+    }
+
+    setIsLoggedIn(true);
+    if (navigateToDashboard) {
+      setView('dashboard');
+    }
+  };
+
+  const ensureValidAuthToken = async () => {
+    const stored = authToken || localStorage.getItem('medgraph_access_token');
+    if (stored && !isTokenExpired(stored)) {
+      return stored;
+    }
+    // Never silently authenticate as a shared demo account after a real
+    // session expires. That can cross account boundaries in the same browser.
+    clearAuthenticatedSession(true);
+    return null;
+  };
+
   // Restore session from localStorage on load
   useEffect(() => {
+    let restoreTimer;
     const token = localStorage.getItem('medgraph_access_token');
     const storedUser = localStorage.getItem('medgraph_user');
     if (token && storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setAuthToken(token);
-        setIsLoggedIn(true);
-        setRole(parsedUser.role === 'medical_practitioner' ? 'doctor' : 'patient');
-        if (parsedUser.role === 'medical_practitioner') {
-          setPractitioner({
-            name: parsedUser.name || '',
-            npi: parsedUser.npi || '',
-            email: parsedUser.email || '',
-            clinic: parsedUser.clinic || ''
-          });
+      if (isTokenExpired(token)) {
+        console.warn("Stored session token is expired. Clearing stale session.");
+        localStorage.removeItem('medgraph_access_token');
+        localStorage.removeItem('medgraph_user');
+      } else {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          restoreTimer = window.setTimeout(() => {
+            setAuthToken(token);
+            setCurrentUser(parsedUser);
+            setIsLoggedIn(true);
+            setRole(parsedUser.role === 'medical_practitioner' ? 'doctor' : 'patient');
+            setHistory(getInitialHistoryForUser(parsedUser));
+            if (parsedUser.role === 'medical_practitioner') {
+              setPractitioner({
+                name: parsedUser.name || '',
+                npi: parsedUser.npi || '',
+                email: parsedUser.email || '',
+                clinic: parsedUser.clinic || ''
+              });
+            }
+            const requestedPage = window.location.hash.slice(1);
+            if (!PUBLIC_VIEWS.includes(requestedPage)) setView('dashboard');
+          }, 0);
+        } catch (e) {
+          console.error("Failed to restore session from localStorage", e);
         }
-        setView('dashboard');
-      } catch (e) {
-        console.error("Failed to restore session from localStorage", e);
       }
     }
+    return () => {
+      if (restoreTimer) window.clearTimeout(restoreTimer);
+    };
   }, []);
+
+  useEffect(() => {
+    const handleNavigation = () => {
+      const page = window.location.hash.slice(1);
+      if (PUBLIC_VIEWS.includes(page)) setView(page);
+      else if (page === 'dashboard' && isLoggedIn) setView('dashboard');
+      else setView('landing');
+    };
+    window.addEventListener('hashchange', handleNavigation);
+    return () => window.removeEventListener('hashchange', handleNavigation);
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    document.title = `${PAGE_TITLES[view] || 'MedGraph'} | MedGraph AI`;
+    window.history.replaceState(null, '', `#${view}`);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [view]);
 
   // Query Google SSO Configuration on boot / when view changes to auth
   useEffect(() => {
+    let cancelled = false;
+    let renderTimer;
+
+    if (view !== 'auth') {
+      return () => {};
+    }
+
+    const renderGoogleButton = (clientId) => {
+      if (cancelled) return;
+      const btnContainer = document.getElementById('google-sso-button');
+      if (!window.google?.accounts?.id || !btnContainer) {
+        renderTimer = window.setTimeout(() => renderGoogleButton(clientId), 100);
+        return;
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (res) => {
+          setAuthError('');
+          try {
+            const apiRes = await fetch(getApiUrl('/auth/google'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                credential: res.credential,
+                role: mapUiRoleToApiRole(roleRef.current)
+              })
+            });
+            if (!apiRes.ok) {
+              const errData = await apiRes.json();
+              setAuthError(errData.detail || 'Google SSO login failed.');
+              return;
+            }
+            const sessionData = await apiRes.json();
+            applyAuthenticatedSession(sessionData);
+          } catch {
+            setAuthError('Unable to connect to Google authentication server.');
+          }
+        }
+      });
+
+      btnContainer.replaceChildren();
+      window.google.accounts.id.renderButton(btnContainer, {
+        theme: 'outline',
+        size: 'large',
+        width: 368
+      });
+    };
+
     const fetchGoogleConfig = async () => {
       try {
         const response = await fetch(getApiUrl('/auth/config'));
-        if (response.ok) {
-          const data = await response.json();
-          if (data.google_client_id) {
-            setIsGoogleSsoConfigured(true);
-            
-            // Wait for script to load & DOM container to mount, then render standard button
-            setTimeout(() => {
-              if (window.google) {
-                window.google.accounts.id.initialize({
-                  client_id: data.google_client_id,
-                  callback: async (res) => {
-                    setAuthError('');
-                    try {
-                      const apiRes = await fetch(getApiUrl('/auth/google'), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          credential: res.credential,
-                          role: mapUiRoleToApiRole(roleRef.current)
-                        })
-                      });
-                      if (!apiRes.ok) {
-                        const errData = await apiRes.json();
-                        setAuthError(errData.detail || 'Google SSO login failed.');
-                        return;
-                      }
-                      const sessionData = await apiRes.json();
-                      applyAuthenticatedSession(sessionData);
-                    } catch (err) {
-                      setAuthError('Unable to connect to Google authentication server.');
-                    }
-                  }
-                });
-                
-                // Render inside container
-                const btnContainer = document.getElementById("google-sso-button");
-                if (btnContainer) {
-                  window.google.accounts.id.renderButton(btnContainer, {
-                    theme: "outline",
-                    size: "large",
-                    width: 368
-                  });
-                }
-              }
-            }, 300);
-          } else {
-            setIsGoogleSsoConfigured(false);
-          }
+        const data = response.ok ? await response.json() : {};
+        const clientId = (data.google_client_id || '').trim();
+        if (!clientId) {
+          setIsGoogleSsoConfigured(false);
+          return;
         }
-      } catch (e) {
-        console.warn("Failed to retrieve Google Auth config from backend:", e);
+        setIsGoogleSsoConfigured(true);
+        renderGoogleButton(clientId);
+      } catch (error) {
+        console.warn('Failed to retrieve Google Auth config from backend:', error);
         setIsGoogleSsoConfigured(false);
       }
     };
 
-    if (view === 'auth') {
-      fetchGoogleConfig();
-    }
+    fetchGoogleConfig();
+    return () => {
+      cancelled = true;
+      if (renderTimer) window.clearTimeout(renderTimer);
+    };
+  // The Google callback intentionally closes over the current session helpers.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, authMode]);
 
   useEffect(() => {
@@ -231,6 +397,53 @@ function App() {
     }
     localStorage.setItem('medgraph_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (view !== 'dashboard' || !isLoggedIn || role !== 'doctor') {
+      return () => {};
+    }
+
+    let cancelled = false;
+    let controller;
+    let timeoutId;
+
+    const checkServiceHealth = async () => {
+      controller = new AbortController();
+      timeoutId = window.setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const response = await fetch(getApiUrl('/health'), {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!cancelled) {
+          setServiceHealth(data.dependencies || {});
+        }
+      } catch {
+        if (!cancelled) {
+          setServiceHealth({
+            neo4j: 'unhealthy: service check failed',
+            pinecone: 'unhealthy: service check failed',
+            redis: 'unhealthy: service check failed',
+            sagemaker: 'unhealthy: service check failed',
+          });
+        }
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    };
+
+    checkServiceHealth();
+    const intervalId = window.setInterval(checkServiceHealth, 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+      controller?.abort();
+    };
+  }, [view, isLoggedIn, role]);
 
   // Auth Form Fields
   const [emailInput, setEmailInput] = useState('');
@@ -255,7 +468,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('diagnostics'); // 'diagnostics' | 'evidence' | 'history' | 'telemetry'
 
   // Patient History List & Search
-  const [history, setHistory] = useState(INITIAL_HISTORY);
+  const [history, setHistory] = useState([]);
   const [activeHistoryId, setActiveHistoryId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -277,11 +490,50 @@ function App() {
   const [copiedNotification, setCopiedNotification] = useState(false);
 
   // Terminal autoscroll reference
-  const terminalEndRef = useRef(null);
+  const terminalConsoleRef = useRef(null);
+
+  function resetWorkspaceState(user = null) {
+    setAge('');
+    setSex('');
+    setSymptoms([]);
+    setMedications([]);
+    setComorbidities([]);
+    setSymptomText('');
+    setMedicationText('');
+    setComorbidityText('');
+    setActiveTab('diagnostics');
+    setHistory(getInitialHistoryForUser(user));
+    setActiveHistoryId(null);
+    setSearchQuery('');
+    setCheckedWorkups({});
+    setIsDiagnosing(false);
+    setActiveNode('none');
+    setLogs([]);
+    setResults(null);
+    setError(null);
+    setRagPassages([]);
+  }
+
+  function clearAuthenticatedSession(navigateToAuth = false) {
+    localStorage.removeItem('medgraph_access_token');
+    localStorage.removeItem('medgraph_user');
+    setAuthToken('');
+    setCurrentUser(null);
+    setIsLoggedIn(false);
+    setRole('doctor');
+    setPractitioner({
+      name: '',
+      npi: '',
+      email: '',
+      clinic: ''
+    });
+    resetWorkspaceState(null);
+    setView(navigateToAuth ? 'auth' : 'landing');
+  }
 
   useEffect(() => {
-    if (terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (terminalConsoleRef.current) {
+      terminalConsoleRef.current.scrollTop = terminalConsoleRef.current.scrollHeight;
     }
   }, [logs]);
 
@@ -355,6 +607,9 @@ function App() {
     setSymptoms([]);
     setMedications([]);
     setComorbidities([]);
+    setSymptomText('');
+    setMedicationText('');
+    setComorbidityText('');
     setResults(null);
     setLogs([]);
     setActiveNode('none');
@@ -376,11 +631,15 @@ function App() {
 
   // Populate dynamic reference grounding guidelines passages
   const updateRagEvidence = (diagnosisOutput, symptomsList) => {
+    if (diagnosisOutput?.rag_status === 'no_results' || diagnosisOutput?.status === 'unavailable') {
+      setRagPassages([]);
+      return;
+    }
     const isCardiac = symptomsList.some(s => s.toLowerCase().includes('chest') || s.toLowerCase().includes('jaw') || s.toLowerCase().includes('sweating') || s.toLowerCase().includes('pressure'));
     const isNeuro = symptomsList.some(s => s.toLowerCase().includes('headache') || s.toLowerCase().includes('cephalalgia') || s.toLowerCase().includes('confusion'));
     const hasDDI = diagnosisOutput?.requires_immediate_intervention || diagnosisOutput?.critical_flag || false;
 
-    let passages = [];
+    let passages;
 
     if (hasDDI) {
       passages = [
@@ -450,6 +709,13 @@ function App() {
       setError('Please add at least one symptom to run diagnostics.');
       return;
     }
+
+    const activeToken = await ensureValidAuthToken();
+    if (!activeToken) {
+      setAuthError('Your session has expired. Please sign in again.');
+      return;
+    }
+
     setError(null);
     setIsDiagnosing(true);
     setResults(null);
@@ -459,12 +725,12 @@ function App() {
 
     // Telemetry and active node animation flow
     setActiveNode('ingest');
-    await addLog('System initialized: Ingesting patient demographics...', 'info', 0);
-    await addLog(`Profile loaded: ${age}-year-old ${sex === 'M' ? 'Male' : 'Female'}`, 'info', 300);
-    await addLog(`Raw symptoms: [${symptoms.join(', ')}]`, 'info', 250);
+    await addLog('Starting case check...', 'info', 0);
+    await addLog(`Patient: ${age}-year-old ${sex === 'M' ? 'Male' : 'Female'}`, 'info', 300);
+    await addLog(`Symptoms: [${symptoms.join(', ')}]`, 'info', 250);
     
     setActiveNode('graph');
-    await addLog('Linker engine: Resolving clinical entities and mapping synonyms...', 'info', 300);
+    await addLog('Matching symptom names...', 'info', 300);
     const resolvedSym = symptoms.map(s => s === 'cephalalgia' ? 'headache' : s === 'chest pressure' ? 'chest pain' : s);
     const resolvedLogMessages = [];
     symptoms.forEach((s, idx) => {
@@ -473,41 +739,41 @@ function App() {
       }
     });
     if (resolvedLogMessages.length > 0) {
-      await addLog(`Synonyms resolved: ${resolvedLogMessages.join(', ')} matched to standard UMLS terms`, 'success', 250);
+        await addLog(`Names matched: ${resolvedLogMessages.join(', ')}`, 'success', 250);
     }
     
-    await addLog('Connecting to Neo4j Graph Database...', 'info', 300);
-    await addLog('Querying drug-drug interactions and symptom-disease probability links...', 'info', 200);
+    await addLog('Checking medicine links...', 'info', 300);
+    await addLog('Looking for known medicine conflicts...', 'info', 200);
 
     // Check drug interactions locally
     const hasDDI = medications.some(m => m.toLowerCase().includes('warfarin')) && medications.some(m => m.toLowerCase().includes('aspirin'));
     
     if (hasDDI) {
-      await addLog('CRITICAL HAZARD DETECTED: Severe drug-drug interaction found [Warfarin + Aspirin]', 'danger', 400);
-      await addLog('Action: High-severity flag triggered. Initiating early-exit bypass node...', 'warning', 300);
+      await addLog('HIGH-RISK INTERACTION: Warfarin + Aspirin', 'danger', 400);
+      await addLog('Action: Safety alert triggered.', 'warning', 300);
       setActiveNode('synthesis');
     } else {
-      await addLog('No critical drug interactions found. Continuing standard workflow...', 'success', 400);
+      await addLog('No high-risk medicine conflict found.', 'success', 400);
       
       setActiveNode('rag');
-      await addLog('Initializing guideline Vector RAG index...', 'info', 400);
-      await addLog('Querying documents database using dense vector embeddings (gemini-embedding-001)...', 'info', 300);
-      await addLog('Retrieving reference literature. Metadata filter applied: prioritize guideline sources over PubMed abstracts...', 'info', 300);
-      await addLog('RAG HIT: Retrieved 5 relevant reference document chunks from AHA/ACC Guidelines.', 'success', 400);
+      await addLog('Finding relevant sources...', 'info', 400);
+      await addLog('Comparing exact and similar terms...', 'info', 300);
+      await addLog('Choosing the most useful references...', 'info', 300);
+      await addLog('Gathering source notes...', 'info', 300);
       
       setActiveNode('reasoning');
-      await addLog('Aggregating graph contexts and guideline literature chunks...', 'info', 300);
-      await addLog('Invoking clinical reasoning engine (SageMaker Gemma-2-9b ml.g5.2xlarge endpoint)...', 'info', 450);
-      await addLog('Reasoning complete: Differential diagnoses formulated.', 'success', 400);
+      await addLog('Combining case details and sources...', 'info', 300);
+      await addLog('Building possible causes...', 'info', 450);
+      await addLog('Possible causes ready.', 'success', 400);
       
       setActiveNode('veracity');
-      await addLog('Running Veracity Checker: Cross-referencing citations against RAG context...', 'info', 350);
-      await addLog('Citation check complete: All source documents validated. 0 hallucinations detected.', 'success', 300);
+      await addLog('Checking citations...', 'info', 350);
+      await addLog('Sources checked.', 'success', 300);
       
       setActiveNode('synthesis');
     }
 
-    await addLog('Compiling final structured clinical analysis report...', 'info', 300);
+    await addLog('Preparing case summary...', 'info', 300);
 
     // Call actual backend or fallback to local mock
     let diagnosticResult = null;
@@ -515,12 +781,12 @@ function App() {
       const headers = {
         'Content-Type': 'application/json'
       };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
+      if (activeToken) {
+        headers['Authorization'] = `Bearer ${activeToken}`;
       }
       const diagnoseController = new AbortController();
       const diagnoseTimeout = setTimeout(() => diagnoseController.abort(), 120000); // 120s timeout
-      const response = await fetch(getApiUrl('/diagnose'), {
+      let response = await fetch(getApiUrl('/diagnose'), {
         method: 'POST',
         headers: headers,
         signal: diagnoseController.signal,
@@ -532,10 +798,27 @@ function App() {
           comorbidities: comorbidities
         })
       });
+
       clearTimeout(diagnoseTimeout);
 
+      // Do not retry with a shared/demo account after the server rejects the
+      // token. That would make the result belong to the wrong user.
+      if (response.status === 401) {
+        clearAuthenticatedSession(true);
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+
       if (!response.ok) {
-        throw new Error('API Response Error');
+        let errMessage = 'API Response Error';
+        try {
+          const errData = await response.json();
+          if (errData && errData.detail) {
+            errMessage = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
+          }
+        } catch {
+          // Some gateway errors do not return JSON.
+        }
+        throw new Error(errMessage);
       }
 
       const data = await response.json();
@@ -553,136 +836,31 @@ function App() {
       }
       diagnosticResult = data;
       setResults(data);
+      if (data.rag_status === 'no_results') {
+        await addLog(data.rag_message || 'No relevant clinical guideline evidence found.', 'warning', 250);
+      } else if (data.rag_status === 'found') {
+          await addLog('Sources found.', 'success', 250);
+      }
       updateRagEvidence(data, resolvedSym);
       await addLog('Clinical analysis report compiled successfully. Rendering outputs.', 'success', 200);
     } catch (e) {
-      await addLog(`Backend server unreachable. Engaging local clinical engine cache fallback...`, 'warning', 200);
-      
-      // Local Mock Engine Fallback matching backend rules exactly
-      let mockData = {};
-      if (hasDDI) {
-        mockData = {
-          alert: "CRITICAL DRUG INTERACTION DETECTED",
-          requires_immediate_intervention: true,
-          drug_interactions: [
-            {
-              dr1: "Warfarin",
-              dr2: "Aspirin",
-              severity: "High",
-              effect: "Co-administration increases the risk of major hemorrhage/bleeding."
-            }
-          ],
-          diagnoses: [
-            {
-              name: "Medication Interaction Hazard",
-              confidence: 1.0,
-              evidence: "Patient is concurrently taking Warfarin (anticoagulant) and Aspirin (antiplatelet). This combination synergisticly increases risk of major gastrointestinal and intracranial bleeding, violating standard clinical recommendations unless specifically indicated under strict monitoring.",
-              citations: ["AHA/ACC Antithrombotic Guidelines: Guideline 10"]
-            }
-          ],
-          recommended_workup: [
-            "Immediate coagulation profile (PT/INR) check",
-            "Review indication for dual therapy",
-            "Evaluate for signs of active bleeding (occult blood, bruising)"
-          ]
-        };
-      } else {
-        const isNeuro = resolvedSym.some(s => s.toLowerCase().includes('headache') || s.toLowerCase().includes('confusion'));
-        const isCardiac = resolvedSym.some(s => s.toLowerCase().includes('chest') || s.toLowerCase().includes('jaw') || s.toLowerCase().includes('sweating') || s.toLowerCase().includes('breath'));
-
-        if (isCardiac) {
-          mockData = {
-            diagnoses: [
-              {
-                name: "Acute Coronary Syndrome (ACS)",
-                confidence: 0.95,
-                evidence: "Patient presents with classic symptoms of chest pain radiating to the jaw with associated diaphoresis, which, according to AHA/ACC Guidelines 2021, warrant immediate cardiac workup.",
-                citations: ["AHA/ACC Guidelines 2021: Guideline 1", "AHA/ACC Guidelines 2021: Guideline 3"]
-              },
-              {
-                name: "Aortic Dissection",
-                confidence: 0.80,
-                evidence: "Aortic Dissection is a critical cardiovascular emergency that can present with sudden, severe chest pain radiating to the jaw. Hypertension acts as a severe risk factor, as per AHA/ACC Guidelines 2022.",
-                citations: ["AHA/ACC Guidelines 2022: Guideline 6"]
-              },
-              {
-                name: "Unstable Angina",
-                confidence: 0.70,
-                evidence: "Ischemic chest tightness without biomarkers elevation. Requires serial troponin tracking.",
-                citations: []
-              }
-            ],
-            top_confidence: 0.95,
-            recommended_workup: [
-              "Electrocardiogram (ECG) within 10 minutes",
-              "Cardiac Troponin levels (initial and 3-hour)",
-              "Chest X-ray",
-              "CT Angiography of the chest"
-            ],
-            drug_interaction_flagged: false,
-            drug_interactions: []
-          };
-        } else if (isNeuro) {
-          mockData = {
-            diagnoses: [
-              {
-                name: "Intracranial Hemorrhage",
-                confidence: 0.80,
-                evidence: "Acute onset headache and confusion. Requires high priority rule-out given anticoagulation/hypertensive hemorrhage risks.",
-                citations: ["AHA/ACC Antithrombotic Guidelines: Guideline 11"]
-              },
-              {
-                name: "Spontaneous Subarachnoid Hemorrhage",
-                confidence: 0.55,
-                evidence: "Sudden onset headache described as severe. High correlation with pre-existing vascular pathologies.",
-                citations: []
-              }
-            ],
-            top_confidence: 0.80,
-            recommended_workup: [
-              "Non-contrast Head CT Scan",
-              "Coagulation profile (PT/INR/aPTT)",
-              "Neurological checks every 1 hour"
-            ],
-            drug_interaction_flagged: false,
-            drug_interactions: []
-          };
-        } else {
-          mockData = {
-            diagnoses: [
-              {
-                name: "Nonspecific Clinical Presentation",
-                confidence: 0.45,
-                evidence: "Patient's symptom constellation does not strongly map to clear high-severity cardiovascular or neurological guidelines.",
-                citations: []
-              }
-            ],
-            top_confidence: 0.45,
-            recommended_workup: [
-              "Basic Metabolic Panel (BMP)",
-              "Complete Blood Count (CBC)",
-              "Clinical Observation"
-            ],
-            drug_interaction_flagged: false,
-            drug_interactions: []
-          };
-        }
-      }
-      // Tag the payload so the UI can label it. Rendering fabricated clinical
-      // output indistinguishable from a real backend response is the dangerous
-      // failure here, not the fallback itself.
-      mockData.is_simulated = true;
-      mockData.simulated_reason = (e && e.name === 'AbortError')
-        ? 'Request timed out'
-        : 'Backend unreachable';
-      diagnosticResult = mockData;
-      setResults(mockData);
-      updateRagEvidence(mockData, resolvedSym);
-      await addLog('SIMULATED result - backend unreachable. This is not a live diagnosis.', 'warning', 100);
+      const message = e?.name === 'AbortError'
+        ? 'The clinical analysis request timed out. Please try again.'
+        : (e?.message && e.message !== 'API Response Error')
+          ? `Analysis Error: ${e.message}`
+          : 'The clinical analysis service is unavailable. Please try again.';
+      setResults({
+        status: 'unavailable', message,
+        diagnoses: [], recommended_workup: [], drug_interactions: [],
+        critical_flag: false, rag_status: 'unavailable', rag_message: message,
+      });
+      updateRagEvidence({ diagnoses: [] }, resolvedSym);
+      await addLog(message, 'warning', 100);
     } finally {
       setIsDiagnosing(false);
       setActiveNode('none');
       setActiveTab('diagnostics'); // Switch tab to results to display diagnostics immediately!
+      setView(localStorage.getItem('medgraph_access_token') ? 'dashboard' : 'auth');
 
       // Add to case history
       if (diagnosticResult) {
@@ -701,32 +879,6 @@ function App() {
         setActiveHistoryId(newCaseId);
       }
     }
-  };
-
-  const mapUiRoleToApiRole = (uiRole) => (
-    uiRole === 'doctor' ? 'medical_practitioner' : 'patient'
-  );
-
-  const applyAuthenticatedSession = (data) => {
-    setAuthToken(data.access_token);
-    setAuthError('');
-    localStorage.setItem('medgraph_access_token', data.access_token);
-    localStorage.setItem('medgraph_user', JSON.stringify(data.user));
-
-    if (data.user.role === 'medical_practitioner') {
-      setRole('doctor');
-      setPractitioner({
-        name: data.user.name || '',
-        npi: data.user.npi || '',
-        email: data.user.email || '',
-        clinic: data.user.clinic || ''
-      });
-    } else {
-      setRole('patient');
-    }
-
-    setIsLoggedIn(true);
-    setView('dashboard');
   };
 
   const handleLoginSubmit = async (e) => {
@@ -750,7 +902,7 @@ function App() {
 
       const data = await response.json();
       applyAuthenticatedSession(data);
-    } catch (err) {
+    } catch {
       setAuthError('Unable to connect to safety gateway.');
     }
   };
@@ -768,7 +920,6 @@ function App() {
           name: nameInput || (role === 'doctor' ? 'Medical Practitioner' : 'Patient'),
           npi: role === 'doctor' ? npiInput : null,
           clinic: role === 'doctor' ? clinicInput : null,
-          tenant_id: 'demo-clinic'
         })
       });
 
@@ -779,33 +930,8 @@ function App() {
 
       const data = await response.json();
       applyAuthenticatedSession(data);
-    } catch (err) {
+    } catch {
       setAuthError('Unable to connect to safety gateway.');
-    }
-  };
-
-  const handleGoogleLogin = async (uiRole) => {
-    setAuthError('');
-    try {
-      const response = await fetch(getApiUrl('/auth/google'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          credential: 'mock_google_jwt_token',
-          role: mapUiRoleToApiRole(uiRole)
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        setAuthError(errorData.detail || 'Google SSO login failed.');
-        return;
-      }
-
-      const data = await response.json();
-      applyAuthenticatedSession(data);
-    } catch (err) {
-      setAuthError('Unable to connect to Google authentication server.');
     }
   };
 
@@ -850,7 +976,7 @@ function App() {
   const downloadPatientReport = () => {
     let report = `MedGraph AI — Patient Health Summary\n`;
     report += `===================================\n\n`;
-    report += `Name: Patient Intake\n`;
+    report += `Name: ${currentUser?.name || 'Patient'}\n`;
     report += `Age: ${age} | Gender: ${sex === 'M' ? 'Male' : 'Female'}\n\n`;
     report += `Symptoms Checked:\n`;
     symptoms.forEach(s => {
@@ -884,7 +1010,7 @@ function App() {
     const element = document.createElement("a");
     const file = new Blob([report], {type: 'text/plain'});
     element.href = URL.createObjectURL(file);
-    element.download = `patient_health_summary_${activeHistoryId || 'PAT-0982'}.txt`;
+    element.download = `patient_health_summary_${activeHistoryId || getPatientDisplayId(currentUser)}.txt`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
@@ -905,6 +1031,12 @@ function App() {
 
   // Helpers for Case Loader presets
   const loadCase = (caseNum) => {
+    setResults(null);
+    setLogs([]);
+    setRagPassages([]);
+    setError(null);
+    setActiveHistoryId(null);
+
     if (caseNum === 1) {
       setAge(65);
       setSex('M');
@@ -952,7 +1084,7 @@ function App() {
       <header className="navbar">
         <div className="nav-brand" onClick={() => setView('landing')} style={{ cursor: 'pointer' }}>
           <Activity className="nav-logo-icon" size={20} />
-          <span>MedGraph AI <span style={{ fontSize: '10px', color: 'var(--accent-cyan)', background: 'rgba(14,165,233,0.1)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>CDSS v1.0</span></span>
+          <span>MedGraph AI <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)', background: 'var(--accent-soft)', border: '1px solid var(--panel-border)', padding: '2px 6px', borderRadius: '3px', marginLeft: '6px' }}>CDSS v2.4</span></span>
         </div>
         <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span
@@ -967,6 +1099,9 @@ function App() {
           >
             How it works
           </span>
+          <a href="#about" className={`nav-link page-navigation-link ${view === 'about' ? 'active' : ''}`} aria-current={view === 'about' ? 'page' : undefined}>About</a>
+          <a href="#library" className={`nav-link page-navigation-link ${view === 'library' ? 'active' : ''}`} aria-current={view === 'library' ? 'page' : undefined}>Evidence Library</a>
+          <a href="#contact" className={`nav-link page-navigation-link ${view === 'contact' ? 'active' : ''}`} aria-current={view === 'contact' ? 'page' : undefined}>Contact</a>
           {isLoggedIn ? (
             <>
               {role === 'doctor' ? (
@@ -988,13 +1123,7 @@ function App() {
               )}
               <button 
                 className="btn btn-secondary" 
-                onClick={() => {
-                  localStorage.removeItem('medgraph_access_token');
-                  localStorage.removeItem('medgraph_user');
-                  setAuthToken('');
-                  setIsLoggedIn(false);
-                  setView('landing');
-                }}
+                onClick={() => clearAuthenticatedSession(false)}
                 style={{ padding: '6px 14px', fontSize: '12px' }}
               >
                 <LogOut size={13} />
@@ -1048,6 +1177,19 @@ function App() {
       )}
 
       {/* Auth View */}
+      {view === 'about' && (
+        <AboutPage
+          onHowItWorks={() => setView('how')}
+          onOpenLibrary={() => setView('library')}
+          onEnterWorkspace={() => { setAuthMode('login'); setView(isLoggedIn ? 'dashboard' : 'auth'); }}
+        />
+      )}
+      {view === 'library' && (
+        <EvidenceLibraryPage onEnterWorkspace={() => { setAuthMode('login'); setView(isLoggedIn ? 'dashboard' : 'auth'); }} />
+      )}
+      {view === 'contact' && <ContactPage />}
+
+      {/* Auth View */}
       {view === 'auth' && (
         <AuthView
           authMode={authMode}
@@ -1067,39 +1209,41 @@ function App() {
           handleLoginSubmit={handleLoginSubmit}
           handleSignupSubmit={handleSignupSubmit}
           authError={authError}
-          handleGoogleLogin={handleGoogleLogin}
           isGoogleSsoConfigured={isGoogleSsoConfigured}
         />
       )}
 
       {/* Dashboard Workspace View */}
-      {view === 'dashboard' && role === 'doctor' && (
-        <main className="workspace-grid">
-          {/* Left Column Sidebar: Inputs ONLY (Wider 420px column layout) */}
+      {view === 'dashboard' && isLoggedIn && role === 'doctor' && (
+        <main className={`workspace-grid ${isDiagnosing || results ? 'workspace-grid--results' : 'workspace-grid--intake'}`}>
+          {/* Left Column: patient details */}
           <aside style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
-            {/* compact Practitioner Info card */}
+            {/* Compact Practitioner Dossier Card */}
             <div className="clinical-card" style={{ padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '6px', background: 'rgba(14, 165, 233, 0.1)', display: 'flex', alignItems: 'center', justifyCenter: 'center', color: 'var(--accent-cyan)', fontWeight: '700', fontSize: '14px', justifyContent: 'center' }}>
-                  {practitioner.name.split(' ').pop().charAt(0) || 'D'}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '4px', background: 'var(--accent-soft)', border: '1px solid var(--panel-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', fontWeight: '600', fontSize: '13px' }}>
+                    MD
+                  </div>
+                  <div>
+                    <h4 style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-contrast)', fontFamily: 'var(--font-sans)' }}>{practitioner.name}</h4>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>NPI: {practitioner.npi} · {practitioner.clinic || 'Cardiology'}</div>
+                  </div>
                 </div>
-                <div>
-                  <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-contrast)' }}>{practitioner.name}</h4>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>NPI: {practitioner.npi}</div>
-                </div>
+                <span className="badge badge-emerald" style={{ fontSize: '9.5px', fontFamily: 'var(--font-mono)' }}>ONLINE</span>
               </div>
             </div>
 
             {/* Ingestion Intake Card */}
             <div className="clinical-card" style={{ padding: '24px' }}>
               <span className="section-title" style={{ marginBottom: '16px' }}>
-                <Stethoscope size={12} /> Patient Intake Profile
+                <Stethoscope size={12} /> Patient details
               </span>
               
               {/* Presets Row */}
               <div style={{ marginBottom: '20px' }}>
-                <span className="form-label">Load Preset Scenarios</span>
+                <span className="form-label">Quick cases</span>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
                   <button className="btn btn-secondary" onClick={() => loadCase(1)} style={{ padding: '5px 10px', fontSize: '11px' }}>
                     DDI Hazard
@@ -1138,7 +1282,7 @@ function App() {
 
               {/* Presenting Symptoms Tagging */}
               <div className="form-group">
-                <label className="form-label">Presenting Symptoms</label>
+                <label className="form-label">Symptoms</label>
                 <form onSubmit={addSymptom} className="tag-input-row">
                   <input 
                     type="text" 
@@ -1169,7 +1313,7 @@ function App() {
 
               {/* Active Medications Tagging */}
               <div className="form-group">
-                <label className="form-label">Active Medications</label>
+                <label className="form-label">Medications</label>
                 <form onSubmit={addMedication} className="tag-input-row">
                   <input 
                     type="text" 
@@ -1200,7 +1344,7 @@ function App() {
 
               {/* Comorbidities */}
               <div className="form-group" style={{ marginBottom: '24px' }}>
-                <label className="form-label">Comorbidities</label>
+                <label className="form-label">Medical history</label>
                 <form onSubmit={addComorbidity} className="tag-input-row">
                   <input 
                     type="text" 
@@ -1272,37 +1416,66 @@ function App() {
           {/* Right Column: Workspace tab panels */}
           <section style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
+            {/* Active Case Telemetry Header Strip */}
+            <div className="dashboard-status-strip">
+              <div className="dashboard-status-left">
+                <span className="dashboard-status-id">
+                  {activeHistoryId || 'ACTIVE INTAKE'}
+                </span>
+                <span className="dashboard-status-meta">
+                  {age ? `${age}yo ${sex === 'M' ? 'Male' : sex === 'F' ? 'Female' : ''}` : 'Age and sex pending'} ·{' '}
+                  {symptoms.length} symptoms · {medications.length} meds · {comorbidities.length} history
+                </span>
+              </div>
+              <div className="dashboard-status-right">
+                <div className="service-status-summary" aria-label="Service status">
+                  <ServiceStatus label="Neo4j" value={serviceHealth?.neo4j} />
+                  <ServiceStatus label="Pinecone" value={serviceHealth?.pinecone} />
+                </div>
+                {results && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '5px 10px', fontSize: '11px' }}
+                    onClick={() => setShowExportModal(true)}
+                  >
+                <FileText size={12} /> View summary
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Workspace tabs navigation bar */}
             <div className="workspace-tabs">
               <button 
                 className={`workspace-tab-btn ${activeTab === 'diagnostics' ? 'active' : ''}`}
                 onClick={() => setActiveTab('diagnostics')}
               >
-                📋 Diagnostics & Workup
+                Results
               </button>
               <button 
                 className={`workspace-tab-btn ${activeTab === 'evidence' ? 'active' : ''}`}
                 onClick={() => setActiveTab('evidence')}
               >
-                🔍 Grounding Evidence {ragPassages.length > 0 && `(${ragPassages.length})`}
+                Sources {ragPassages.length > 0 && `(${ragPassages.length})`}
               </button>
               <button 
                 className={`workspace-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
                 onClick={() => setActiveTab('history')}
               >
-                📅 Patient Records ({history.length})
+                Records ({history.length})
               </button>
               <button 
                 className={`workspace-tab-btn ${activeTab === 'telemetry' ? 'active' : ''}`}
                 onClick={() => setActiveTab('telemetry')}
               >
-                🛠️ Agent Telemetry
+                Console
               </button>
               <button 
                 className={`workspace-tab-btn ${activeTab === 'knowledge' ? 'active' : ''}`}
                 onClick={() => setActiveTab('knowledge')}
               >
-                📁 Knowledge Ingestion
+                Uploads
               </button>
             </div>
 
@@ -1313,9 +1486,9 @@ function App() {
                   <div className="empty-state">
                     <Stethoscope className="empty-state-icon" size={48} />
                     <div>
-                      <h3 style={{ color: 'var(--text-contrast)', fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>CDSS Engine Dormant</h3>
+                        <h3 style={{ color: 'var(--text-contrast)', fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>Ready to evaluate</h3>
                       <p style={{ fontSize: '13px', maxWidth: '360px', color: 'var(--text-secondary)' }}>
-                        Add symptoms in the left intake panel and click "Evaluate Case" to initiate calculations.
+                        Add symptoms and medicines, then click “Evaluate Case”.
                       </p>
                     </div>
                   </div>
@@ -1324,9 +1497,9 @@ function App() {
                     {/* Header Controls */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '14px', marginBottom: '20px' }}>
                       <div>
-                        <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-contrast)' }}>Differential Analysis Report</h3>
+                        <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-contrast)' }}>Case results</h3>
                         <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          Evaluated against: {comorbidities.length > 0 ? comorbidities.join(', ') : 'No pre-existing history'}
+                          History used: {comorbidities.length > 0 ? comorbidities.join(', ') : 'None added'}
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
@@ -1348,13 +1521,31 @@ function App() {
                         <AlertTriangle className="triage-icon" size={20} style={{ color: 'var(--accent-amber)' }} />
                         <div>
                           <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>
-                            SIMULATED OUTPUT - NOT A LIVE DIAGNOSIS
+                            Demo result — not a live diagnosis
                           </h4>
                           <p className="triage-desc">
-                            {results.simulated_reason || 'Backend unreachable'}. These results were
-                            generated locally for demonstration and are not derived from the
-                            knowledge graph, guideline retrieval, or the reasoning model.
+                            {results.simulated_reason || 'The backend is unreachable'}. This result was made locally for demonstration.
                           </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {results.rag_status === 'no_results' && (
+                      <div className="triage-banner" style={{ borderColor: 'var(--accent-amber)', background: 'rgba(217, 169, 95, 0.1)', marginBottom: '14px' }}>
+                        <AlertTriangle className="triage-icon" size={20} style={{ color: 'var(--accent-amber)' }} />
+                        <div>
+                          <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>No matching sources</h4>
+                          <p className="triage-desc">{results.rag_message || 'No relevant clinical guideline evidence was found for this query.'} Add more specific symptoms, medications, or history and try again.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {results.status === 'unavailable' && (
+                      <div className="triage-banner" style={{ borderColor: 'var(--accent-rose)', marginBottom: '14px' }}>
+                        <AlertTriangle className="triage-icon" size={20} style={{ color: 'var(--accent-rose)' }} />
+                        <div>
+                          <h4 className="triage-title" style={{ color: 'var(--accent-rose)' }}>Analysis unavailable</h4>
+                          <p className="triage-desc">{results.message || 'The clinical analysis service is unavailable. Please try again.'}</p>
                         </div>
                       </div>
                     )}
@@ -1364,7 +1555,7 @@ function App() {
                       <div className="triage-banner critical">
                         <ShieldAlert className="triage-icon" size={20} />
                         <div>
-                          <h4 className="triage-title">CRITICAL PHARMACOLOGICAL ALERT (EARLY-EXIT DETECTED)</h4>
+                          <h4 className="triage-title">High-risk medicine interaction</h4>
                           {results.drug_interactions && results.drug_interactions.map((interaction, i) => (
                             <p key={i} className="triage-desc" style={{ color: 'var(--text-contrast)', fontWeight: '500' }}>
                               <strong>{interaction.dr1}</strong> + <strong>{interaction.dr2}</strong>: {interaction.effect} (Severity: {interaction.severity})
@@ -1376,7 +1567,7 @@ function App() {
 
                     {/* Diagnoses list */}
                     <div style={{ marginBottom: '24px' }}>
-                      <span className="section-title">Differential Diagnosis Ranks</span>
+                      <span className="section-title">Possible causes</span>
                       {results.diagnoses && results.diagnoses.map((diag, idx) => (
                         <div key={idx} className="diagnosis-card">
                           <div className="diagnosis-header">
@@ -1421,7 +1612,7 @@ function App() {
                     {/* Checkbox Recommended Workup list */}
                     {results.recommended_workup && results.recommended_workup.length > 0 && (
                       <div>
-                        <span className="section-title">Recommended Clinical Workup Checklist</span>
+                        <span className="section-title">Next steps</span>
                         <div className="workup-grid">
                           {results.recommended_workup.map((workup, wIdx) => {
                             const isChecked = checkedWorkups[wIdx] || false;
@@ -1448,9 +1639,9 @@ function App() {
             {activeTab === 'evidence' && (
               <div className="clinical-card" style={{ flex: 1, minHeight: '450px' }}>
                 <div style={{ borderBottom: '1px solid var(--panel-border)', paddingBottom: '14px', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Citations & Grounding Guidelines</h3>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Sources used</h3>
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Verifiable reference paragraphs retrieved from Vector index supporting the differentials.
+                    References used for this case.
                   </p>
                 </div>
 
@@ -1458,62 +1649,80 @@ function App() {
                   <div className="empty-state">
                     <BookOpen className="empty-state-icon" size={48} style={{ color: 'var(--accent-purple)' }} />
                     <div>
-                      <h3 style={{ color: 'var(--text-contrast)', fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>No Grounding Context Loaded</h3>
+                        <h3 style={{ color: 'var(--text-contrast)', fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>No sources yet</h3>
                       <p style={{ fontSize: '13px', maxWidth: '360px', color: 'var(--text-secondary)' }}>
-                        Execute a patient evaluation to retrieve and inspect referenced guidelines literature text.
+                        Evaluate a case to see the supporting references.
                       </p>
                     </div>
                   </div>
                 ) : (
                   <div className="evidence-section">
                     
-                    {/* SVG Concept Graph Visualizer inside Evidence */}
-                    <span className="section-title"><Sparkles size={12} /> Dynamic Concept Linkage Graph</span>
+                    {/* Dynamic Bipartite Clinical Concept Graph */}
+                    <span className="section-title"><Sparkles size={12} /> Case links</span>
                     <div className="svg-graph-container">
-                      <svg width="100%" height="100%" viewBox="0 0 600 280">
-                        {/* Links */}
-                        <line x1="80" y1="60" x2="280" y2="140" className="graph-link active" />
-                        <line x1="80" y1="130" x2="280" y2="140" className="graph-link active" />
-                        {medications.length > 0 && <line x1="80" y1="210" x2="280" y2="140" className="graph-link active" />}
-                        {results.diagnoses && results.diagnoses.map((_, i) => (
-                          <line key={i} x1="280" y1="140" x2="480" y2={60 + i * 80} className="graph-link active" />
-                        ))}
-
-                        {/* Central Node */}
+                      <svg width="100%" height="100%" viewBox="0 0 680 280">
+                        {symptoms.slice(0, 4).map((_, i) => {
+                          const y = 45 + i * 48;
+                          return <path key={`sx-e-${i}`} d={`M 145 ${y} C 220 ${y}, 240 140, 310 140`} className="graph-link active symptom" fill="none" />;
+                        })}
+                        {medications.slice(0, 2).map((_, i) => {
+                          const y = 215 + i * 38;
+                          return <path key={`med-e-${i}`} d={`M 145 ${y} C 220 ${y}, 240 140, 310 140`} className="graph-link active medication" fill="none" />;
+                        })}
+                        {results?.diagnoses && results.diagnoses.slice(0, 3).map((_, i) => {
+                          const y = 65 + i * 75;
+                          return <path key={`dx-e-${i}`} d={`M 370 140 C 435 140, 455 ${y}, 520 ${y}`} className="graph-link active diagnosis" fill="none" />;
+                        })}
+                        {symptoms.slice(0, 4).map((sym, i) => {
+                          const y = 45 + i * 48;
+                          return (
+                            <g key={`sx-n-${i}`} className="graph-node symptom">
+                              <rect x="20" y={y - 14} width="125" height="28" rx="4" className="graph-node-circle" />
+                              <text x="82" y={y + 4} className="graph-node-text title" style={{ fontSize: '10px' }}>
+                                Sx: {sym.length > 14 ? sym.slice(0, 14) + '…' : sym}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        {medications.slice(0, 2).map((med, i) => {
+                          const y = 215 + i * 38;
+                          return (
+                            <g key={`med-n-${i}`} className="graph-node medication">
+                              <rect x="20" y={y - 14} width="125" height="28" rx="4" className="graph-node-circle" />
+                              <text x="82" y={y + 4} className="graph-node-text title" style={{ fontSize: '10px' }}>
+                                Rx: {med.length > 14 ? med.slice(0, 14) + '…' : med}
+                              </text>
+                            </g>
+                          );
+                        })}
                         <g className="graph-node">
-                          <circle cx="280" cy="140" r="30" className="graph-node-circle" style={{ stroke: 'var(--accent-purple)', fill: 'rgba(139, 92, 246, 0.05)' }} />
-                          <text x="280" y="137" className="graph-node-text title">{age}{sex}</text>
-                          <text x="280" y="152" className="graph-node-text">Case Link</text>
+                          <circle cx="340" cy="140" r="32" className="graph-node-circle" style={{ stroke: 'var(--accent-cyan)', strokeWidth: 2 }} />
+                          <text x="340" y="136" className="graph-node-text title" style={{ fontSize: '11px', fontWeight: 700 }}>
+                            {age || 'Pt'}{sex}
+                          </text>
+                          <text x="340" y="151" className="graph-node-text" style={{ fontSize: '9px' }}>
+                            Graph Core
+                          </text>
                         </g>
-
-                        {/* Symptoms Nodes */}
-                        <g className="graph-node symptom">
-                          <circle cx="80" cy="60" r="22" className="graph-node-circle" />
-                          <text x="80" y="63" className="graph-node-text title" style={{ fontSize: '8px' }}>{symptoms[0] || "symptom"}</text>
-                        </g>
-                        
-                        <g className="graph-node symptom">
-                          <circle cx="80" cy="130" r="22" className="graph-node-circle" />
-                          <text x="80" y="133" className="graph-node-text title" style={{ fontSize: '8px' }}>{symptoms[1] || "symptom"}</text>
-                        </g>
-
-                        {/* Medications Node */}
-                        <g className="graph-node medication">
-                          <circle cx="80" cy="210" r="22" className="graph-node-circle" />
-                          <text x="80" y="213" className="graph-node-text title" style={{ fontSize: '8px' }}>{medications[0] || "meds"}</text>
-                        </g>
-
-                        {/* Diagnoses Nodes */}
-                        {results.diagnoses && results.diagnoses.map((diag, i) => (
-                          <g key={i} className="graph-node diagnosis">
-                            <circle cx="480" cy={60 + i * 80} r="25" className="graph-node-circle" />
-                            <text x="480" y={63 + i * 80} className="graph-node-text title" style={{ fontSize: '8px' }}>{diag.name.substring(0, 15)}...</text>
-                          </g>
-                        ))}
+                        {results?.diagnoses && results.diagnoses.slice(0, 3).map((diag, i) => {
+                          const y = 65 + i * 75;
+                          return (
+                            <g key={`dx-n-${i}`} className="graph-node diagnosis">
+                              <rect x="520" y={y - 18} width="145" height="36" rx="4" className="graph-node-circle" />
+                              <text x="592" y={y - 2} className="graph-node-text title" style={{ fontSize: '9.5px', fontWeight: 600 }}>
+                                {diag.name.length > 20 ? diag.name.slice(0, 20) + '…' : diag.name}
+                              </text>
+                              <text x="592" y={y + 11} className="graph-node-text" style={{ fontSize: '9px', fill: 'var(--accent-emerald)' }}>
+                                {(diag.confidence * 100).toFixed(0)}% match
+                              </text>
+                            </g>
+                          );
+                        })}
                       </svg>
                     </div>
 
-                    <span className="section-title"><BookOpen size={12} /> Grounding Literature Reference Paragraphs</span>
+                    <span className="section-title"><BookOpen size={12} /> Reference notes</span>
                     {ragPassages.map((passage, pIdx) => (
                       <div key={pIdx} className="evidence-block">
                         <div className="evidence-block-header">
@@ -1534,9 +1743,9 @@ function App() {
             {activeTab === 'history' && (
               <div className="clinical-card" style={{ flex: 1, minHeight: '450px' }}>
                 <div style={{ borderBottom: '1px solid var(--panel-border)', paddingBottom: '14px', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Patient Records Database</h3>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Saved cases</h3>
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Historical CDSS runs audit log. Search by Patient ID, symptoms, or diagnoses findings.
+                    Review earlier cases by ID, symptom, medicine, or finding.
                   </p>
                 </div>
 
@@ -1558,7 +1767,7 @@ function App() {
                     <div>
                       <h3 style={{ color: 'var(--text-contrast)', fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>No Matching Records Found</h3>
                       <p style={{ fontSize: '13px', maxWidth: '360px', color: 'var(--text-secondary)' }}>
-                        Try adjusting your search criteria or evaluate a new patient case to append logs.
+                        Try another search or evaluate a new case.
                       </p>
                     </div>
                   </div>
@@ -1645,40 +1854,49 @@ function App() {
             {activeTab === 'telemetry' && (
               <div className="clinical-card" style={{ flex: 1, minHeight: '450px' }}>
                 <div style={{ borderBottom: '1px solid var(--panel-border)', paddingBottom: '14px', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Agent Process Telemetry Console</h3>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Run console</h3>
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Track parallel agent execution paths, database queries, and LLM orchestration steps.
+                    See the main steps and service connections for the current run.
                   </p>
                 </div>
 
-                {/* Vitals Agent Workflow status */}
-                <span className="section-title"><Layers size={12} /> Agent Chains Vitals</span>
+                <div className="service-health-panel">
+                  <div className="service-health-heading">Services</div>
+                  <div className="service-health-list">
+                    {SERVICE_LABELS.map(({ key, label }) => (
+                      <ServiceStatus key={key} label={label} value={serviceHealth?.[key]} />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Main run steps */}
+                <span className="section-title"><Layers size={12} /> Run steps</span>
                 <div className="clinical-vitals-map">
                   <div className={`vital-node-card ${activeNode === 'ingest' ? 'active' : (logs.length > 0 && activeNode !== 'ingest' ? 'completed' : '')}`}>
                     <User className="vital-node-icon" size={16} />
                     <span className="vital-node-title">Intake</span>
                   </div>
-                  <div className={`vital-node-card ${activeNode === 'graph' ? 'active' : (logs.some(l => l.message.includes('Connections') || l.message.includes('standard workflow') || l.message.includes('CRITICAL HAZARD')) ? 'completed' : '')}`}>
+                  <div className={`vital-node-card ${activeNode === 'graph' ? 'active' : (logs.some(l => l.message.includes('medicine conflict') || l.message.includes('HIGH-RISK INTERACTION')) ? 'completed' : '')}`}>
                     <Database className="vital-node-icon" size={16} />
                     <span className="vital-node-title">Graph</span>
                   </div>
-                  <div className={`vital-node-card ${activeNode === 'rag' ? 'active' : (logs.some(l => l.message.includes('RAG HIT')) ? 'completed' : '')}`}>
+                  <div className={`vital-node-card ${activeNode === 'rag' ? 'active' : (logs.some(l => l.message.includes('Sources found')) ? 'completed' : '')}`}>
                     <FileText className="vital-node-icon" size={16} />
                     <span className="vital-node-title">RAG Lit</span>
                   </div>
-                  <div className={`vital-node-card ${activeNode === 'reasoning' ? 'active' : (logs.some(l => l.message.includes('Reasoning complete')) ? 'completed' : '')}`}>
+                  <div className={`vital-node-card ${activeNode === 'reasoning' ? 'active' : (logs.some(l => l.message.includes('Possible causes ready')) ? 'completed' : '')}`}>
                     <Brain className="vital-node-icon" size={16} />
                     <span className="vital-node-title">Reasoning</span>
                   </div>
-                  <div className={`vital-node-card ${activeNode === 'veracity' ? 'active' : (logs.some(l => l.message.includes('Citation check complete')) ? 'completed' : '')}`}>
+                  <div className={`vital-node-card ${activeNode === 'veracity' ? 'active' : (logs.some(l => l.message.includes('Sources checked')) ? 'completed' : '')}`}>
                     <UserCheck className="vital-node-icon" size={16} />
                     <span className="vital-node-title">Veracity</span>
                   </div>
                 </div>
 
                 {/* Telemetry Console */}
-                <span className="section-title"><Terminal size={12} /> Console Output</span>
-                <div className="telemetry-console">
+                <span className="section-title"><Terminal size={12} /> Activity</span>
+                <div className="telemetry-console" ref={terminalConsoleRef}>
                   {logs.length === 0 ? (
                     <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '8px', height: '100%', justifyContent: 'center' }}>
                       <Terminal size={14} />
@@ -1692,7 +1910,6 @@ function App() {
                       </div>
                     ))
                   )}
-                  <div ref={terminalEndRef} />
                 </div>
               </div>
             )}
@@ -1705,8 +1922,9 @@ function App() {
         </main>
       )}
 
-      {view === 'dashboard' && role === 'patient' && (
+      {view === 'dashboard' && isLoggedIn && role === 'patient' && (
         <PatientWorkspace
+          patient={currentUser}
           age={age}
           setAge={setAge}
           sex={sex}
@@ -1802,6 +2020,9 @@ function App() {
           <div className="footer-col">
             <h4 className="footer-col-title">Resources</h4>
             <ul className="footer-links">
+              <li><a className="page-navigation-link" href="#about">About MedGraph</a></li>
+              <li><a className="page-navigation-link" href="#library">Evidence Library</a></li>
+              <li><a className="page-navigation-link" href="#contact">Contact & Feedback</a></li>
               <li><span>API Documentation</span></li>
               <li><span>AHA/ACC Guidelines</span></li>
               <li><span>Architecture Overview</span></li>

@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import os
+import re
 import time
 from enum import Enum
 from typing import Annotated
@@ -29,7 +30,7 @@ class AuthUser(BaseModel):
     sub: str
     email: str
     role: Role
-    tenant_id: str = "demo-clinic"
+    tenant_id: str = os.getenv("DEFAULT_TENANT_ID", "demo-clinic")
     name: str | None = None
     npi: str | None = None
     clinic: str | None = None
@@ -42,7 +43,6 @@ class RegisterRequest(BaseModel):
     name: str | None = None
     npi: str | None = None
     clinic: str | None = None
-    tenant_id: str = "demo-clinic"
 
 
 class TokenResponse(BaseModel):
@@ -57,16 +57,17 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "3600"))
 _DEFAULT_DEV_SECRET = "dev-only-change-me"
 AUTH_SECRET = os.getenv("AUTH_SECRET", _DEFAULT_DEV_SECRET)
+DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "demo-clinic")
 
 # Refuse to boot with the insecure default secret outside of dev/test contexts.
-if AUTH_SECRET == _DEFAULT_DEV_SECRET:
+if AUTH_SECRET == _DEFAULT_DEV_SECRET or len(AUTH_SECRET) < 32:
     if os.getenv("TESTING") == "true" or os.getenv("CI") == "true":
         import warnings
-        warnings.warn("AUTH_SECRET is using dev default in test mode", RuntimeWarning)
+        warnings.warn("AUTH_SECRET is weak in test mode", RuntimeWarning)
     else:
         raise RuntimeError(
-            "AUTH_SECRET is still set to the insecure default 'dev-only-change-me'. "
-            "Set a strong AUTH_SECRET environment variable before starting."
+            "AUTH_SECRET must be a strong random value of at least 32 characters "
+            "before starting outside test/CI mode."
         )
 
 
@@ -152,15 +153,26 @@ def authenticate_user(email: str, password: str) -> AuthUser | None:
 
 
 def register_user(payload: RegisterRequest) -> AuthUser:
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=422, detail="Password must contain at least 8 characters.")
+
+    if payload.role == Role.medical_practitioner:
+        if not payload.npi or not re.fullmatch(r"\d{10}", payload.npi.strip()):
+            raise HTTPException(status_code=422, detail="A valid 10-digit NPI is required for practitioner accounts.")
+        if not payload.clinic or not payload.clinic.strip():
+            raise HTTPException(status_code=422, detail="Clinic is required for practitioner accounts.")
+
     email = payload.email.lower()
     if email in _users:
         raise HTTPException(status_code=409, detail="An account already exists for this email.")
 
     user = AuthUser(
-        sub=f"usr_{hashlib.sha1(email.encode()).hexdigest()[:12]}",
+        sub=f"usr_{hashlib.sha256(email.encode()).hexdigest()[:12]}",
         email=email,
         role=payload.role,
-        tenant_id=payload.tenant_id,
+        # Tenant membership is server-controlled. A public registration request
+        # must not be able to mint a token for an arbitrary tenant.
+        tenant_id=DEFAULT_TENANT_ID,
         name=payload.name,
         npi=payload.npi,
         clinic=payload.clinic,
@@ -176,7 +188,7 @@ def decode_access_token(token: str) -> AuthUser:
             sub=claims["sub"],
             email=claims["email"],
             role=Role(claims["role"]),
-            tenant_id=claims.get("tenant_id", "demo-clinic"),
+            tenant_id=claims.get("tenant_id", DEFAULT_TENANT_ID),
             name=claims.get("name"),
             npi=claims.get("npi"),
             clinic=claims.get("clinic"),
@@ -190,7 +202,10 @@ def decode_access_token(token: str) -> AuthUser:
 
 
 def get_current_user(token: Annotated[str | None, Depends(oauth2_scheme)]) -> AuthUser:
-    if os.getenv("TESTING") == "true":
+    if (
+        os.getenv("TESTING") == "true"
+        and os.getenv("ALLOW_TEST_AUTH") == "true"
+    ):
         return AuthUser(
             sub="test_practitioner",
             email="test-practitioner@medgraph.ai",

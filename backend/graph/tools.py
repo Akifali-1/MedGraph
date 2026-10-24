@@ -19,7 +19,10 @@ def query_knowledge_graph(patient_medications: list, patient_symptoms: list, doc
     diseases = neo4j_client.query_symptom_diseases(sympts)
     
     # Identify high-severity interactions
-    has_critical = any(i.get("severity") == "HIGH" for i in interactions)
+    has_critical = any(
+        str(i.get("severity", "")).strip().upper() == "HIGH"
+        for i in interactions
+    )
     
     return {
         "drug_interactions": interactions,

@@ -21,3 +21,15 @@ variable "enable_backend" {
   description = "Toggle to spin up/down ECS and ALB backend resources to save costs"
   default     = true
 }
+
+variable "enable_sagemaker" {
+  type        = bool
+  description = "Enable the optional SageMaker reasoning endpoint. Gemini remains the default when disabled."
+  default     = false
+}
+
+variable "sagemaker_endpoint_name" {
+  type        = string
+  description = "SageMaker endpoint name used only when enable_sagemaker is true"
+  default     = "medgraph-gemma-endpoint"
+}

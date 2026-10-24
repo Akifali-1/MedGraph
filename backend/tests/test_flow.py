@@ -1,5 +1,6 @@
 import os
 os.environ["TESTING"] = "true"
+os.environ["ALLOW_TEST_AUTH"] = "true"
 import sys
 import logging
 

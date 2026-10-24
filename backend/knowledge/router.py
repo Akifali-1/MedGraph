@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request
 from typing import List, Optional
 from backend.auth import AuthUser, Role, require_roles
@@ -11,6 +13,7 @@ from backend.knowledge.processor import (
 )
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+logger = logging.getLogger(__name__)
 
 @router.post("/upload/guidelines")
 @limiter.limit("5/minute")
@@ -36,8 +39,9 @@ async def upload_guideline(
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process guideline: {str(e)}")
+    except Exception:
+        logger.exception("guideline_upload_failed")
+        raise HTTPException(status_code=500, detail="Failed to process guideline.")
 
 @router.post("/upload/structured")
 @limiter.limit("5/minute")
@@ -63,8 +67,9 @@ async def upload_structured(
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process CSV: {str(e)}")
+    except Exception:
+        logger.exception("structured_upload_failed")
+        raise HTTPException(status_code=500, detail="Failed to process structured data.")
 
 @router.get("/documents")
 @limiter.limit("30/minute")
@@ -78,8 +83,9 @@ async def get_documents(
     try:
         docs = list_user_documents(doctor_id=current_user.sub)
         return docs
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve documents: {str(e)}")
+    except Exception:
+        logger.exception("document_list_failed")
+        raise HTTPException(status_code=500, detail="Failed to retrieve documents.")
 
 @router.delete("/documents/{document_id}")
 @limiter.limit("10/minute")
@@ -94,5 +100,6 @@ async def delete_document(
     try:
         delete_user_document(document_id, doctor_id=current_user.sub)
         return {"deleted": True, "document_id": document_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
+    except Exception:
+        logger.exception("document_delete_failed")
+        raise HTTPException(status_code=500, detail="Failed to delete document.")

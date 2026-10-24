@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { 
   UploadCloud, 
   FileText, 
@@ -7,10 +7,6 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   RefreshCw, 
-  Plus, 
-  Info,
-  Calendar,
-  Layers,
   Sparkles
 } from 'lucide-react';
 import { getApiUrl } from '../config';
@@ -30,16 +26,12 @@ export default function KnowledgeUploader() {
   const [detectedRoute, setDetectedRoute] = useState(null); // 'guideline' | 'structured' | null
   const [validationWarning, setValidationWarning] = useState(null);
 
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
-
   const getAuthHeaders = () => {
     const token = localStorage.getItem('medgraph_access_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     setIsLoadingDocs(true);
     setDocError(null);
     try {
@@ -51,12 +43,17 @@ export default function KnowledgeUploader() {
       }
       const data = await response.json();
       setDocuments(data);
-    } catch (err) {
-      setDocError(err.message);
+    } catch (error) {
+      setDocError(error.message);
     } finally {
       setIsLoadingDocs(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => fetchDocuments(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchDocuments]);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -86,7 +83,7 @@ export default function KnowledgeUploader() {
           } else {
             resolve({ valid: true });
           }
-        } catch (err) {
+        } catch {
           resolve({ valid: false, warning: "Unable to parse CSV structure." });
         }
       };
@@ -225,10 +222,10 @@ export default function KnowledgeUploader() {
       <div className="clinical-card" style={{ padding: '28px' }}>
         <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
           <Sparkles size={16} style={{ color: 'var(--accent-cyan)' }} />
-          Knowledge Ingestion Engine
+          Add documents
         </h3>
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: '1.4' }}>
-          Upload new clinical study literature or institutional treatment guidelines (.pdf, .txt) to seed the Vector RAG DB, or extend the Neo4j drug-drug interaction relationships graph with structured clinical rulesets (.csv).
+          Add a PDF or TXT source, or a CSV with medicine interactions.
         </p>
 
         <form onSubmit={handleUploadSubmit} onDragEnter={handleDrag}>
@@ -259,7 +256,7 @@ export default function KnowledgeUploader() {
                   Drag & drop clinical files or <span style={{ color: 'var(--accent-cyan)', textDecoration: 'underline', cursor: 'pointer' }}>browse system files</span>
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Supports PDF / TXT (for Semantic RAG) and CSV (for Interactions Graph)
+                  PDF / TXT for sources · CSV for medicine interactions
                 </div>
               </div>
             ) : (
@@ -278,9 +275,9 @@ export default function KnowledgeUploader() {
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
                     Size: <span style={{ fontFamily: 'var(--font-mono)' }}>{(file.size / 1024).toFixed(1)} KB</span> | Pipeline: {' '}
                     {detectedRoute === 'guideline' ? (
-                      <span className="badge badge-purple" style={{ fontSize: '10px', padding: '1px 6px' }}>Pinecone (RAG Vector)</span>
+                      <span className="badge badge-purple" style={{ fontSize: '10px', padding: '1px 6px' }}>Pinecone</span>
                     ) : (
-                      <span className="badge badge-emerald" style={{ fontSize: '10px', padding: '1px 6px' }}>Neo4j (Knowledge Graph)</span>
+                      <span className="badge badge-emerald" style={{ fontSize: '10px', padding: '1px 6px' }}>Neo4j</span>
                     )}
                   </div>
                 </div>
@@ -328,7 +325,7 @@ export default function KnowledgeUploader() {
                   className="btn btn-primary"
                   disabled={uploadStatus === 'uploading' || uploadStatus === 'processing'}
                 >
-                  Confirm Ingest Pipeline
+                  Upload file
                 </button>
               </div>
             </div>
@@ -340,7 +337,7 @@ export default function KnowledgeUploader() {
           <div style={{ marginTop: '24px', padding: '18px', background: 'rgba(14, 165, 233, 0.03)', border: '1px solid rgba(14, 165, 233, 0.15)', borderRadius: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
               <span style={{ color: 'var(--text-contrast)', fontWeight: '700' }}>
-                {uploadStatus === 'uploading' ? "Transferring file streams..." : "Parsing file structure & generating vector chunk embeddings..."}
+                {uploadStatus === 'uploading' ? "Uploading file..." : "Preparing file..."}
               </span>
               <span style={{ color: 'var(--accent-cyan)', fontWeight: '700', fontFamily: 'var(--font-mono)' }}>{uploadProgress}%</span>
             </div>
@@ -357,7 +354,7 @@ export default function KnowledgeUploader() {
           <div className="triage-banner" style={{ background: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--accent-emerald)', marginTop: '24px', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', borderRadius: '10px' }}>
             <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
             <div style={{ fontSize: '13px' }}>
-              <strong>Ingestion Success:</strong> Guideline references successfully indexed.
+              <strong>Upload complete:</strong> Source added.
             </div>
           </div>
         )}
@@ -366,7 +363,7 @@ export default function KnowledgeUploader() {
           <div className="triage-banner critical" style={{ marginTop: '24px', display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '14px 18px', borderRadius: '10px' }}>
             <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
             <div style={{ fontSize: '13px' }}>
-              <strong>Ingestion Failed:</strong> {uploadError}
+              <strong>Upload failed:</strong> {uploadError}
             </div>
           </div>
         )}
@@ -376,8 +373,8 @@ export default function KnowledgeUploader() {
       <div className="clinical-card" style={{ padding: '28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
           <div>
-            <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Custom Guideline Indexes</h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Custom literature vectors indexed in Pinecone namespace <span style={{ fontFamily: 'var(--font-mono)' }}>'user_uploads'</span></p>
+            <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>Uploaded sources</h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Your uploaded files used in case searches.</p>
           </div>
           <button 
             className="btn btn-secondary btn-icon-only" 
@@ -403,8 +400,8 @@ export default function KnowledgeUploader() {
         ) : documents.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '48px 0', border: '1px dashed var(--panel-border)', borderRadius: '10px' }}>
             <FileText size={36} style={{ color: 'var(--text-muted)' }} />
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>No Custom Guidelines Sourced</div>
-            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Indexed documents will instantly ground diagnostic reasoning loops.</div>
+            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>No uploads yet</div>
+            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Uploaded files will be available in future case searches.</div>
           </div>
         ) : (
           <div className="history-table-container" style={{ margin: 0, maxHeight: '350px', overflowY: 'auto' }}>

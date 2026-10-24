@@ -91,6 +91,11 @@ def process_guideline(file_bytes: bytes, filename: str, title: str = None, docto
         index_name=index_name,
         namespace=user_namespace
     )
+
+    # Existing retrievers are cached per doctor. Without invalidation, a
+    # successful upload is invisible until the process restarts.
+    from backend.retrieval.retriever import clear_retriever_cache
+    clear_retriever_cache(doctor_id)
     
     return {
         "chunks_indexed": len(documents),
@@ -142,7 +147,10 @@ def process_ddi_csv(file_bytes: bytes, doctor_id: str = None) -> dict:
             # First check if interaction already exists to avoid duplicates
             def exists(drug_a, drug_b):
                 return any(
-                    i["dr1.name"].lower() == drug_a.lower() and i["dr2.name"].lower() == drug_b.lower()
+                    i["dr1.name"].lower() == drug_a.lower()
+                    and i["dr2.name"].lower() == drug_b.lower()
+                    and i.get("r.scope", "global") == ("private" if doctor_id else "global")
+                    and i.get("r.doctor_id") == doctor_id
                     for i in MOCK_INTERACTIONS
                 )
 

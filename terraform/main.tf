@@ -11,6 +11,7 @@ data "aws_caller_identity" "current" {}
 
 # SageMaker Execution Role (Data source for existing role)
 data "aws_iam_role" "sagemaker_role" {
+  count = var.enable_sagemaker ? 1 : 0
   name = "medgraph-sagemaker-execution-role"
 }
 
@@ -342,24 +343,23 @@ resource "aws_ecs_task_definition" "backend_task" {
         }
       ]
       secrets = [
-        { name = "OPENAI_API_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/OPENAI_API_KEY" },
         { name = "GOOGLE_API_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/GOOGLE_API_KEY" },
         { name = "PINECONE_API_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/PINECONE_API_KEY" },
         { name = "PINECONE_ENV", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/PINECONE_ENV" },
         { name = "PINECONE_INDEX_NAME", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/PINECONE_INDEX_NAME" },
-        { name = "COHERE_API_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/COHERE_API_KEY" },
         { name = "NEO4J_URI", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/NEO4J_URI" },
         { name = "NEO4J_USERNAME", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/NEO4J_USERNAME" },
         { name = "NEO4J_PASSWORD", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/NEO4J_PASSWORD" },
-        { name = "HF_MODEL_ID", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/HF_MODEL_ID" },
-        { name = "HF_API_TOKEN", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/HF_API_TOKEN" },
         { name = "GOOGLE_CLIENT_ID", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/GOOGLE_CLIENT_ID" },
         { name = "GOOGLE_CLIENT_SECRET", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/GOOGLE_CLIENT_SECRET" },
         { name = "AUTH_SECRET", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/AUTH_SECRET" }
       ]
       environment = [
         { name = "AWS_REGION", value = var.aws_region },
-        { name = "SAGEMAKER_ENDPOINT_NAME", value = "gemma-2-2b-medgraph-ep-v1" }
+        { name = "SAGEMAKER_ENDPOINT_NAME", value = var.enable_sagemaker ? var.sagemaker_endpoint_name : "" },
+        { name = "DISABLE_SAGEMAKER", value = var.enable_sagemaker ? "false" : "true" },
+        { name = "MOCK_REDIS", value = "true" },
+        { name = "CORS_ORIGINS", value = "https://${aws_cloudfront_distribution.frontend_cdn.domain_name},http://localhost,http://localhost:5173,http://localhost:3000" }
       ]
       logConfiguration = {
         logDriver = "awslogs"
@@ -405,7 +405,9 @@ resource "aws_ecs_service" "backend_service" {
 
 # S3 Bucket (Private, static site host)
 resource "aws_s3_bucket" "frontend_bucket" {
-  bucket        = "${var.project_name}-${var.environment}-frontend-site"
+  # S3 names are globally unique. Including the AWS account ID keeps fresh
+  # account deployments from colliding with a bucket in the retired account.
+  bucket        = "${var.project_name}-${var.environment}-frontend-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
 }
 

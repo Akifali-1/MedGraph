@@ -75,7 +75,7 @@ def seed_from_csv():
                         d1_class = "anticoagulant" if "warfarin" in d1.lower() else "antiplatelet" if "aspirin" in d1.lower() or "clopidogrel" in d1.lower() else "other"
                         session.run(
                             "MERGE (dr:Drug {name: $name}) ON CREATE SET dr.id = $id, dr.class = $class",
-                            name=d1, id=d1_id, class=d1_class
+                            name=d1, id=d1_id, **{"class": d1_class}
                         )
                         drugs_seeded.add(d1)
                         
@@ -85,7 +85,7 @@ def seed_from_csv():
                         d2_class = "anticoagulant" if "warfarin" in d2.lower() else "antiplatelet" if "aspirin" in d2.lower() or "clopidogrel" in d2.lower() else "other"
                         session.run(
                             "MERGE (dr:Drug {name: $name}) ON CREATE SET dr.id = $id, dr.class = $class",
-                            name=d2, id=d2_id, class=d2_class
+                            name=d2, id=d2_id, **{"class": d2_class}
                         )
                         drugs_seeded.add(d2)
                     

@@ -10,10 +10,13 @@ from langgraph.graph import StateGraph, END
 from backend.config import Config
 from backend.models.patient import PatientInput, ClinicalAnalysis, Diagnosis
 from backend.agents.entity_linker import resolve_clinical_entities
-from backend.retrieval.retriever import get_relevant_guidelines
+from backend.retrieval.retriever import get_relevant_guidelines, build_clinical_query
 from backend.graph.tools import query_knowledge_graph
+from backend.agents.evidence import verify_diagnosis_citations
 
 log = structlog.get_logger()
+
+NO_EVIDENCE_MESSAGE = "No relevant clinical guideline or knowledge-graph evidence was found for this query."
 
 # State Definition
 class AgentState(TypedDict):
@@ -68,7 +71,7 @@ def rag_node(state: AgentState) -> Dict[str, Any]:
         query = state["query_refinement"]
         log.info("rag_node_refined_query", request_id=request_id, query=query)
     else:
-        query = f"Patient presenting with symptoms: {', '.join(patient['symptoms'])}. Previous medical history: {', '.join(patient['comorbidities'])}."
+        query = build_clinical_query(patient)
         log.info("rag_node_initial_query", request_id=request_id, query=query)
         
     chunks = get_relevant_guidelines(query, top_n=5, doctor_id=state.get("doctor_id"))
@@ -99,6 +102,8 @@ def aggregator_node(state: AgentState) -> Dict[str, Any]:
     request_id = state.get("request_id", "unknown")
     log.info("aggregator_node_start", request_id=request_id)
     rag_text = "\n\n".join([f"- Chunk {i+1}: {chunk}" for i, chunk in enumerate(state["rag_chunks"])])
+    if not rag_text:
+        rag_text = NO_EVIDENCE_MESSAGE
     
     graph_res = state["graph_results"]
     graph_text = f"Symptom-Disease Probabilities: {graph_res.get('probable_diseases', [])}\n"
@@ -114,6 +119,15 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
     log.info("reasoning_node_start", request_id=request_id)
     patient = state["patient_data"]
     context = state["aggregated_context"]
+
+    if not state["rag_chunks"] and not (
+        state["graph_results"].get("probable_diseases")
+        or state["graph_results"].get("drug_interactions")
+    ):
+        data = {"diagnoses": [], "recommended_workup": [],
+                "status": "no_results", "message": NO_EVIDENCE_MESSAGE}
+        return {"diagnoses": [], "confidence": 0.0,
+                "query_refinement": "", "final_output": data}
     
     system_prompt = (
         "You are an advanced clinical decision support assistant. Analyze the patient "
@@ -257,6 +271,15 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
             log.error("reasoning_node_openai_failed", request_id=request_id, error=str(e))
             
     # Mock LLM reasoning fallback (extremely robust for offline portfolio demos)
+    demo_mode = (
+        os.getenv("TESTING") == "true" or os.getenv("CI") == "true"
+        or os.getenv("MEDGRAPH_DEMO_MODE", "false").lower() == "true"
+    )
+    if not demo_mode:
+        data = {"diagnoses": [], "recommended_workup": [], "status": "unavailable",
+                "message": "The clinical reasoning service is unavailable. Please try again."}
+        return {"diagnoses": [], "confidence": 0.0,
+                "query_refinement": "", "final_output": data}
     log.info("reasoning_node_using_mock_fallback", request_id=request_id)
     symptom_set = {s.lower() for s in patient["symptoms"]}
     med_set = {m.lower() for m in patient["medications"]}
@@ -265,6 +288,23 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
     top_conf = 0.0
     recommended = []
     refinement = "atypical chest pain etiology"
+
+    if not state["rag_chunks"] and not (
+        state["graph_results"].get("probable_diseases")
+        or state["graph_results"].get("drug_interactions")
+    ):
+        mock_res = {
+            "diagnoses": [],
+            "top_confidence": 0.0,
+            "recommended_workup": [NO_EVIDENCE_MESSAGE],
+            "query_refinement": "broader clinical guideline search terms"
+        }
+        return {
+            "diagnoses": [],
+            "confidence": 0.0,
+            "query_refinement": mock_res["query_refinement"],
+            "final_output": mock_res
+        }
     
     # Check for STEMI / Angina symptoms
     if "chest pain" in symptom_set or "jaw pain" in symptom_set or "sweating" in symptom_set:
@@ -339,50 +379,7 @@ def veracity_checker_node(state: AgentState) -> Dict[str, Any]:
     diagnoses = state["diagnoses"]
     rag_chunks = state["rag_chunks"]
     
-    # Flat text containing all retrieved guidelines
-    retrieved_text = "\n".join(rag_chunks).lower()
-    
-    verified_diagnoses = []
-    citation_warnings = False
-    
-    for diag in diagnoses:
-        verified_citations = []
-        diag_citations = diag.get("citations", [])
-        
-        for citation in diag_citations:
-            # Clean the citation token (e.g. "Guideline 1" or "AHA/ACC Guidelines 2021")
-            # In a real product, we would do semantic matching. 
-            # In our simple check, we search if key keywords (like Guideline number) are mentioned in RAG.
-            cleaned_cit = citation.lower().strip()
-            
-            # Simple keyword overlap check
-            # e.g., if citation says "Guideline 3", check if "guideline 3" or "3" is present in retrieved chunks
-            citation_indicator = ""
-            if "guideline" in cleaned_cit:
-                # Extract digits
-                digits = "".join([c for c in cleaned_cit if c.isdigit()])
-                if digits:
-                    citation_indicator = f"guideline {digits}"
-            
-            # Match check
-            is_matched = False
-            if citation_indicator and citation_indicator in retrieved_text:
-                is_matched = True
-            elif cleaned_cit in retrieved_text:
-                is_matched = True
-            elif any(part in retrieved_text for part in cleaned_cit.split() if len(part) > 4):
-                is_matched = True
-                
-            if is_matched:
-                verified_citations.append(citation)
-            else:
-                log.warning("veracity_hallucinated_citation_removed", request_id=request_id, citation=citation)
-                citation_warnings = True
-                
-        # Copy diagnosis but with verified citations list
-        new_diag = diag.copy()
-        new_diag["citations"] = verified_citations
-        verified_diagnoses.append(new_diag)
+    verified_diagnoses, citation_warnings = verify_diagnosis_citations(diagnoses, rag_chunks)
         
     log.info("veracity_checker_node_completed", request_id=request_id, citation_warnings_present=citation_warnings)
     return {
@@ -404,8 +401,14 @@ def output_node(state: AgentState) -> Dict[str, Any]:
         "critical_flag": state["drug_interaction_flag"],
         "iterations_taken": state["iteration"],
         "citation_warnings_flagged": state["citation_warnings_present"],
-        "recommended_workup": state.get("final_output", {}).get("recommended_workup", [])
+        "recommended_workup": state.get("final_output", {}).get("recommended_workup", []),
+        "rag_status": "found" if state.get("rag_chunks") else "no_results",
+        "rag_message": None if state.get("rag_chunks") else NO_EVIDENCE_MESSAGE
     }
+    reasoning_output = state.get("final_output") or {}
+    if reasoning_output.get("status"):
+        final_output["status"] = reasoning_output["status"]
+        final_output["message"] = reasoning_output.get("message")
     
     log.info("output_node_completed", request_id=request_id)
     return {"final_output": final_output}
@@ -455,6 +458,8 @@ def route_after_reasoning(state: AgentState) -> str:
         return "alert"
         
     # Low confidence retry check
+    if not state.get("query_refinement"):
+        return "veracity_check"
     if state["confidence"] < 0.80 and state["iteration"] < 2:
         log.info("reasoning_route_retry", request_id=request_id, confidence=state["confidence"], iteration=state["iteration"])
         return "retry"
@@ -486,7 +491,6 @@ def build_agent_graph():
     workflow.set_entry_point("intake")
     
     # Split parallel branches: intake -> rag AND graph
-    workflow.add_edge("intake", "rag")
     workflow.add_edge("intake", "graph")
     
     # Graph early-exit conditional routing
@@ -495,7 +499,7 @@ def build_agent_graph():
         route_after_graph,
         {
             "alert_early": "alert",
-            "aggregator": "aggregator"
+            "aggregator": "rag"
         }
     )
     

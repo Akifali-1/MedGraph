@@ -19,7 +19,7 @@ output "ecr_repository_url" {
 }
 
 output "sagemaker_role_arn" {
-  value       = data.aws_iam_role.sagemaker_role.arn
+  value       = var.enable_sagemaker ? data.aws_iam_role.sagemaker_role[0].arn : "disabled"
   description = "The custom IAM role ARN to use for launching AWS SageMaker Gemma endpoints"
 }
 

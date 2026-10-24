@@ -1,458 +1,584 @@
-import { useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { ArrowRight, Sparkles } from 'lucide-react';
-import ParticleStream from './ParticleStream.jsx';
-import BrainNetwork from './BrainNetwork.jsx';
+import { ArrowRight, ArrowUpRight } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
-/**
- * Cinematic landing.
- *
- * One continuous scroll journey rather than a stack of sections. A single
- * signal path — the spine — is fixed to the viewport and morphs its geometry
- * as each stage takes over, so the reader sees one line travelling with them
- * instead of separate graphics scrolling past. At the end it converges into
- * the report, which is the actual output of the system.
- *
- * Four stages were chosen over the six pipeline steps because the pipeline
- * detail belongs in How It Works. These are the four things that make the
- * project defensible: structured retrieval, hybrid evidence, citation
- * verification, and graceful degradation.
- *
- * Motion notes:
- *  - Everything scroll-driven lives inside gsap.matchMedia() keyed on
- *    prefers-reduced-motion, and cine.css carries finished-state fallbacks,
- *    so no content depends on JS or on motion being allowed.
- *  - The spine morph animates the `d` attribute directly. Every path in
- *    SPINES has the same command structure and point count, which is what
- *    makes a plain attribute tween interpolate cleanly without MorphSVG.
- */
-
-const STAGE_COLOR = {
-  intake: 'var(--c-intake)',
-  graph: 'var(--c-graph)',
-  evidence: 'var(--c-evidence)',
-  verify: 'var(--c-verify)',
-};
-
-const STAGES = [
+// 8 Perimeter Nodes on the Radial Synaptic Dial (angles in degrees)
+const DIAL_ENTITIES = [
   {
-    key: 'intake',
-    side: 'left',
-    index: '01 — Structure',
-    title: (
-      <>
-        Retrieval over a <em>graph</em>, not a pile of text
-      </>
-    ),
-    body: 'Drug and symptom relationships live in Neo4j as typed edges seeded from NIH RxNav, with severity stored on the edge itself. A dangerous combination is a single hop, not a similarity score that happened to rank well. The traversal is deterministic and it is auditable — you can read the Cypher that produced the finding.',
-    readout: [
-      ['Store', 'Neo4j · Cypher'],
-      ['Seeded from', 'NIH RxNav'],
-      ['Edge property', 'severity'],
-    ],
+    id: 'warfarin',
+    code: 'RX-11289',
+    label: 'WARFARIN',
+    type: 'ANTICOAGULANT',
+    angle: -65,
+    linkedTo: ['aspirin', 'hemorrhage', 'guideline10'],
+    verdict: 'CRITICAL CONTRAINDICATION // 1-HOP EDGE TO ASPIRIN',
+    detail: 'Vitamin K antagonist. In the presence of antiplatelet therapy, MedGraph halts generative inference in 180ms.',
   },
   {
-    key: 'graph',
-    side: 'right',
-    index: '02 — Evidence',
-    title: (
-      <>
-        Two retrievers, <em>reconciled</em>
-      </>
-    ),
-    body: 'Sparse BM25 catches the exact drug name and the specific ICD code. Dense vector search catches the clinical paraphrase that shares no keywords at all. Both run over AHA/ACC guidelines and PubMed abstracts, and the two ranked lists are merged by reciprocal rank fusion before anything reaches the model.',
-    readout: [
-      ['Sparse', 'BM25'],
-      ['Dense', 'Pinecone · FAISS'],
-      ['Merge', 'RRF + rerank'],
-    ],
+    id: 'aspirin',
+    code: 'RX-1191',
+    label: 'ASPIRIN',
+    type: 'ANTIPLATELET',
+    angle: -20,
+    linkedTo: ['warfarin', 'hemorrhage', 'stemi'],
+    verdict: 'SYNERGISTIC BLEED VECTOR // DUAL PATHWAY ACTIVE',
+    detail: 'Irreversible COX-1 inhibitor. Flagged against Warfarin via NIH RxNav edge severity = HIGH.',
   },
   {
-    key: 'evidence',
-    side: 'left',
-    index: '03 — Verification',
-    title: (
-      <>
-        Every citation <em>checked</em> against what was retrieved
-      </>
-    ),
-    body: 'After generation, each reference the model emits is matched against the passages actually pulled for that request. Anything unsupported is stripped and the response carries a warning flag. A model that cites nothing can be doubted; a model that cites something it invented cannot, and that is the failure mode worth engineering against.',
-    readout: [
-      ['Checked', 'post-generation'],
-      ['Unsupported', 'stripped + flagged'],
-      ['Coverage', '100%'],
-    ],
+    id: 'chestpain',
+    code: 'UMLS-C0008031',
+    label: 'CHEST PAIN',
+    type: 'PRESENTING SYMPTOM',
+    angle: 25,
+    linkedTo: ['diaphoresis', 'stemi', 'guideline21'],
+    verdict: 'CANONICAL ONTOLOGY MATCH // RESOLVED FROM "CHEST PRESSURE"',
+    detail: 'Mapped from raw patient prose to canonical UMLS identifier before graph traversal.',
   },
   {
-    key: 'verify',
-    side: 'right',
-    index: '04 — Resilience',
-    title: (
-      <>
-        Every dependency <em>degrades</em> instead of failing
-      </>
-    ),
-    body: 'Neo4j falls back to an in-memory graph. Pinecone falls back to local FAISS, then to BM25 alone. The reasoning layer walks from the fine-tuned SageMaker endpoint to Gemini to a deterministic simulator. Each response reports which fallbacks were active, so a degraded answer is never mistaken for a full one.',
-    readout: [
-      ['Graph', 'Neo4j → memory'],
-      ['Vectors', 'Pinecone → FAISS → BM25'],
-      ['Reasoning', 'SageMaker → Gemini → sim'],
-    ],
+    id: 'diaphoresis',
+    code: 'UMLS-C0700590',
+    label: 'DIAPHORESIS',
+    type: 'AUTONOMIC SIGNAL',
+    angle: 70,
+    linkedTo: ['chestpain', 'stemi', 'guideline21'],
+    verdict: 'SECONDARY ISCHEMIC MARKER // WEIGHT +0.34',
+    detail: 'Resolved from intake symptom "sweating". Amplifies acute coronary syndrome rank.',
+  },
+  {
+    id: 'stemi',
+    code: 'ICD-I21.3',
+    label: 'ACUTE STEMI',
+    type: 'DIFFERENTIAL DX',
+    angle: 115,
+    linkedTo: ['chestpain', 'diaphoresis', 'guideline21'],
+    verdict: 'PRIMARY CARDIAC DIFFERENTIAL // CONFIDENCE 0.87',
+    detail: 'Grounded by 2-hop symptom topology and AHA/ACC 2021 Chest Pain Triage Guidelines.',
+  },
+  {
+    id: 'hemorrhage',
+    code: 'ICD-K92.2',
+    label: 'HEMORRHAGE RISK',
+    type: 'ADVERSE EVENT',
+    angle: 160,
+    linkedTo: ['warfarin', 'aspirin', 'guideline10'],
+    verdict: 'EARLY-EXIT SAFETY INTERCEPT // SEVERITY: CRITICAL',
+    detail: 'Compound gastrointestinal and intracranial bleed hazard. Triggers immediate PT/INR order.',
+  },
+  {
+    id: 'guideline10',
+    code: 'AHA-ANTITHROMB-10',
+    label: 'AHA GUIDELINE §10',
+    type: 'VERIFIED LITERATURE',
+    angle: 205,
+    linkedTo: ['warfarin', 'aspirin', 'hemorrhage'],
+    verdict: 'CHUNK VERIFIED // 94.2% DENSE + BM25 RRF MATCH',
+    detail: ' mandates strict INR monitoring and contraindicates routine dual therapy without mechanical valve indication.',
+  },
+  {
+    id: 'guideline21',
+    code: 'AHA-CHEST-4.1',
+    label: 'ACC/AHA §4.1.2',
+    type: 'VERIFIED LITERATURE',
+    angle: 250,
+    linkedTo: ['chestpain', 'diaphoresis', 'stemi'],
+    verdict: 'CHUNK VERIFIED // 10-MINUTE ECG PROTOCOL',
+    detail: 'Requires 12-lead ECG acquisition within 10 minutes of arrival and serial troponin assays.',
   },
 ];
 
-const REPORT = [
-  { name: 'Medication interaction hazard', src: 'RxNav · AHA/ACC antithrombotic', score: '1.00' },
-  { name: 'STEMI', src: 'AHA/ACC 2021 · guideline 1, 3', score: '0.87' },
-  { name: 'Unstable angina', src: 'AHA/ACC 2021 · guideline 1, 4', score: '0.71' },
+const INDEX_CAPABILITIES = [
+  {
+    idx: '01',
+    code: '01 // NAMES',
+    title: 'Understand the terms',
+    kicker: 'PATIENT WORDS',
+    summary: 'Turns everyday symptoms and medicine names into clear, shared terms.',
+    signal: ['PATIENT WORDS', 'SHARED TERMS', 'CLEAR MATCH'],
+  },
+  {
+    idx: '02',
+    code: '02 // SAFETY',
+    title: 'Check known conflicts',
+    kicker: 'MEDICATION SAFETY',
+    summary: 'Checks for known medication conflicts before any generated answer.',
+    signal: ['MEDICINES', 'KNOWN CONFLICTS', 'EARLY WARNING'],
+  },
+  {
+    idx: '03',
+    code: '03 // SOURCES',
+    title: 'Find useful sources',
+    kicker: 'GUIDELINES + LITERATURE',
+    summary: 'Combines exact matches with similar clinical language to find useful references.',
+    signal: ['EXACT MATCH', 'SIMILAR LANGUAGE', 'USEFUL SOURCES'],
+  },
+  {
+    idx: '04',
+    code: '04 // PROOF',
+    title: 'Show the source',
+    kicker: 'CITATIONS',
+    summary: 'Keeps each citation tied to the evidence used for the result.',
+    signal: ['RESULT', 'SOURCE CHECK', 'VISIBLE PATH'],
+  },
 ];
 
-const WORD = 'MedGraph';
+// Convert polar angle to SVG (cx=250, cy=250, r=168)
+function polarToCartesian(angleDeg, radius = 168) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return {
+    x: 250 + radius * Math.cos(rad),
+    y: 250 + radius * Math.sin(rad),
+  };
+}
 
-export default function CinematicLanding({ isLoggedIn, onEnterWorkspace, onLogin, onRegister, onHowItWorks }) {
+export default function CinematicLanding({
+  isLoggedIn,
+  onEnterWorkspace,
+  onLogin,
+  onRegister,
+  onHowItWorks,
+}) {
   const root = useRef(null);
+  const [activeEntityId, setActiveEntityId] = useState('warfarin');
+  const [compareMode, setCompareMode] = useState('medgraph'); // 'medgraph' | 'llm'
+  const [openRow, setOpenRow] = useState('02');
 
-  /* Where the stream should sit at a given scroll fraction, as a 0-1 share of
-     viewport width. The stream swings to whichever side the text is not on,
-     so the ribbon and the copy never fight for the same space. Stable
-     identity via useCallback so the canvas effect does not re-seed. */
-  const sideForY = useCallback((t) => {
-    /* Hero occupies roughly the first viewport, convergence the last. */
-    const first = 0.14;
-    const last = 0.86;
-    if (t <= first) return 0.5;
-    if (t >= last) return 0.5;
-
-    const span = (t - first) / (last - first);
-    const n = STAGES.length;
-    const idx = Math.min(n - 1, Math.floor(span * n));
-    const within = span * n - idx;
-
-    /* Stage bodies alternate left/right; the stream takes the opposite side. */
-    const target = (i) => (STAGES[i].side === 'left' ? 0.74 : 0.26);
-    const cur = target(idx);
-    const nxt = target(Math.min(n - 1, idx + 1));
-
-    /* Ease across the second half of each stage so the crossing feels like a
-       single continuous sweep rather than a jump at the boundary. */
-    if (within < 0.55) return cur;
-    const k = (within - 0.55) / 0.45;
-    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-    return cur + (nxt - cur) * e;
-  }, []);
-
-  /* Motes get stable randomised parameters. Generated once so a re-render
-     never reshuffles them mid-drift. */
-  const motes = useMemo(
-    () =>
-      Array.from({ length: 18 }, (_, i) => ({
-        left: `${(i * 6.4 + ((i * 37) % 11)) % 100}%`,
-        delay: `${-(i * 1.7) % 26}s`,
-        duration: `${24 + ((i * 5) % 16)}s`,
-        scale: 0.6 + ((i * 13) % 10) / 10,
-      })),
-    [],
-  );
+  const activeEntity =
+    DIAL_ENTITIES.find((e) => e.id === activeEntityId) || DIAL_ENTITIES[0];
 
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
-
       mm.add('(prefers-reduced-motion: no-preference)', () => {
-        /* --- Reading progress --- */
-        gsap.to('.cine-progress', {
-          scaleX: 1,
-          ease: 'none',
-          scrollTrigger: { start: 0, end: 'max', scrub: 0.25 },
-        });
-
-        /* --- Paper deepens as the reader descends --- */
-        /* Scrubbed against total scroll, so the tone always matches position
-           regardless of how fast the reader moves. */
-        gsap.to(document.body, {
-          '--tint': 1,
-          ease: 'none',
-          scrollTrigger: { start: 0, end: 'max', scrub: 0.6 },
-        });
-
-        /* --- Opening: letters rise, then the tagline unmasks --- */
-        gsap
-          .timeline({ defaults: { ease: 'power3.out' } })
-          .fromTo('.cine-letter', 
-            { yPercent: 118, opacity: 0 },
-            { yPercent: 0, opacity: 1, duration: 1.1, stagger: 0.055 }
-          )
-          .fromTo('.cine-tagline span',
-            { yPercent: 105, opacity: 0 },
-            { yPercent: 0, opacity: 1, duration: 0.9 },
-            '-=0.5'
-          )
-          .fromTo('.cine-kicker',
-            { opacity: 0, y: 15 },
-            { opacity: 1, y: 0, duration: 0.8 },
-            '-=0.6'
-          )
-          .fromTo('.cine-hint',
-            { opacity: 0, y: 15 },
-            { opacity: 1, y: 0, duration: 0.8 },
-            '-=0.5'
-          )
-          .fromTo('.cine-open-figure',
-            { opacity: 0, scale: 0.94 },
-            { opacity: 1, scale: 1, duration: 1.2 },
-            0.15
-          )
-          .fromTo('.cine-badge',
-            { opacity: 0, y: 14 },
-            { opacity: 1, y: 0, duration: 0.7 },
-            '-=0.4'
-          );
-
-        /* Slow gradient sweep across the wordmark, independent of scroll. */
-        gsap.to('.cine-letter', {
-          backgroundPosition: '340% 50%',
-          duration: 18,
-          ease: 'none',
-          repeat: -1,
-          yoyo: true,
-        });
-
-        /* Opening lifts and fades as the reader leaves it. */
-        gsap.to('.cine-open', {
-          yPercent: -14,
+        gsap.from('.mg-title-line', {
+          yPercent: 105,
           opacity: 0,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: '.cine-open',
-            start: 'bottom bottom',
-            end: 'bottom top',
-            scrub: 0.4,
-          },
+          duration: 0.9,
+          stagger: 0.1,
+          ease: 'power4.out',
         });
-
-        /* Navbar: transparent over the hero, frosted surface once the reader
-           scrolls past. Class is toggled at the midpoint of the hero exit. */
-        ScrollTrigger.create({
-          trigger: '.cine-open',
-          start: 'bottom 92%',
-          onEnter: () => document.querySelector('.navbar')?.classList.add('is-docked'),
-          onLeaveBack: () => document.querySelector('.navbar')?.classList.remove('is-docked'),
+        gsap.from('.mg-dial-wrap', {
+          opacity: 0,
+          scale: 0.94,
+          duration: 1.1,
+          delay: 0.2,
+          ease: 'power3.out',
         });
-
-        /* --- Stages: copy rises, readout facts stagger in ---
-           Scrubbed rather than time-based. Progress is tied to scroll
-           position, so a fast reader sees the whole reveal compressed instead
-           of arriving after it has already played. `scrub: 1` adds a short
-           catch-up so the motion still feels eased rather than glued to the
-           wheel. Anchored on the section's own travel through the viewport,
-           which keeps the timing proportional on any screen height. */
-        STAGES.forEach((s) => {
-          const scope = `#stage-${s.key}`;
-          gsap
-            .timeline({
-              scrollTrigger: {
-                trigger: scope,
-                start: 'top 88%',
-                end: 'top 38%',
-                scrub: 1,
-              },
-              defaults: { ease: 'power2.out' },
-            })
-            .from(`${scope} .cine-index`, { opacity: 0, x: -14, duration: 0.6 })
-            .from(`${scope} h2`, { opacity: 0, y: 30, duration: 0.9 }, '-=0.35')
-            .from(`${scope} p`, { opacity: 0, y: 22, duration: 0.8 }, '-=0.6')
-            .from(
-              `${scope} .cine-readout div`,
-              { opacity: 0, y: 16, duration: 0.55, stagger: 0.12 },
-              '-=0.5',
-            );
-
-          /* Gentle parallax drift so the block is never static while in view. */
-          gsap.fromTo(
-            `${scope} .cine-stage-body`,
-            { y: 30 },
-            {
-              y: -30,
-              ease: 'none',
-              scrollTrigger: { trigger: scope, start: 'top bottom', end: 'bottom top', scrub: 0.8 },
-            },
-          );
-        });
-
-        /* --- Report assembles --- */
-        gsap
-          .timeline({
+        gsap.utils.toArray('[data-mg-reveal]').forEach((el) => {
+          gsap.from(el, {
+            y: 26,
+            opacity: 0,
+            duration: 0.75,
+            ease: 'power3.out',
             scrollTrigger: {
-              trigger: '.cine-converge',
-              start: 'top 82%',
-              end: 'top 30%',
-              scrub: 1,
+              trigger: el,
+              start: 'top 86%',
+              once: true,
             },
-            defaults: { ease: 'power2.out' },
-          })
-          .from('.cine-converge-lead', { opacity: 0, duration: 0.7 })
-          .from('.cine-report', { opacity: 0, y: 46, scale: 0.97, duration: 1 }, '-=0.4')
-          .from('.cine-report-row', { opacity: 0, x: -18, duration: 0.5, stagger: 0.14 }, '-=0.5')
-          .from('.cine-report-flag', { opacity: 0, duration: 0.5 }, '-=0.15')
-          .from('.cine-actions', { opacity: 0, y: 18, duration: 0.7 }, '-=0.2');
+          });
+        });
       });
-
-      /* The docked class lives on .navbar, which is outside this component's
-         scope, so it has to be cleared by hand on unmount. */
-      return () => {
-        document.querySelector('.navbar')?.classList.remove('is-docked');
-        mm.revert();
-      };
+      return () => mm.revert();
     },
-    { scope: root },
+    { scope: root }
   );
 
   return (
-    <main className="cine" ref={root}>
-      <div className="cine-progress" />
+    <main className="mg-monograph" ref={root}>
+      {/* ==================== ACT I: MONUMENTAL EDITORIAL HERO & SYNAPTIC DIAL ==================== */}
+      <section className="mg-hero">
+        <div className="mg-grid">
+          {/* Left Column: Brutalist Editorial Typography */}
+          <div className="mg-hero-left">
+             <div className="mg-kicker">
+               <span className="mg-vermilion-dot" />
+               <span>00 // FOLLOW THE CLINICAL PATH</span>
+            </div>
 
-      {/* ---------- Ambient ---------- */}
-      <div className="cine-ambient" aria-hidden="true">
-        <div className="cine-blob cine-blob-1" />
-        <div className="cine-blob cine-blob-2" />
-        <div className="cine-blob cine-blob-3" />
-      </div>
-      <div className="cine-grain" aria-hidden="true" />
-      <div className="cine-motes" aria-hidden="true">
-        {motes.map((m, i) => (
-          <span
-            key={i}
-            className="cine-mote"
-            style={{
-              left: m.left,
-              bottom: 0,
-              animationDelay: m.delay,
-              animationDuration: m.duration,
-              transform: `scale(${m.scale})`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* ---------- Stream ---------- */}
-      {/* The braided particle ribbon. Lives behind everything, spans the whole
-          document, and carries the reader from the hero to the final node. */}
-      <ParticleStream sideForY={sideForY} />
-
-      {/* ---------- Opening ---------- */}
-      <section className="cine-open">
-        <div className="cine-open-copy">
-          <h1 className="cine-wordmark" aria-label={WORD}>
-            {WORD.split('').map((ch, i) => (
-              <span className="cine-letter" key={i} aria-hidden="true">
-                {ch}
+            <h1 className="mg-display">
+              <span className="mg-title-mask">
+                <span className="mg-title-line">Medicine is</span>
               </span>
-            ))}
-          </h1>
+              <span className="mg-title-mask">
+                <span className="mg-title-line">
+                  not a <em>guess.</em>
+                </span>
+              </span>
+              <span className="mg-title-mask">
+                <span className="mg-title-line mg-title-sub">It is a graph.</span>
+              </span>
+            </h1>
 
-          <div className="cine-tagline">
-            <span>Clinical AI Assistant</span>
+            <div className="mg-hero-cta-row">
+              <button
+                type="button"
+                className="mg-btn-solid"
+                onClick={isLoggedIn ? onEnterWorkspace : onLogin}
+              >
+                <span>{isLoggedIn ? 'ENTER CLINICAL CONSOLE' : 'INITIALIZE CONSOLE'}</span>
+                <ArrowRight size={15} />
+              </button>
+
+              <button
+                type="button"
+                className="mg-btn-ruled"
+                onClick={onHowItWorks}
+              >
+                <span>INSPECT WORKED CASE 0417</span>
+                <ArrowUpRight size={15} />
+              </button>
+            </div>
+
           </div>
 
-          <p className="cine-kicker">
-            Graph-powered clinical intelligence that connects evidence to decisions.
-          </p>
+          {/* Right Column: The Radial Synaptic Dial (Interactive SVG Instrument) */}
+          <div className="mg-hero-right">
+            <div className="mg-dial-wrap">
+              <div className="mg-dial-stage">
+                <svg
+                  className="mg-dial-svg"
+                  viewBox="0 0 500 500"
+                  aria-label="Interactive Clinical Chord Diagram"
+                >
+                  {/* Outer & Inner Caliper Rings */}
+                  <circle cx="250" cy="250" r="218" className="mg-ring-outer" />
+                  <circle cx="250" cy="250" r="168" className="mg-ring-main" />
+                  <circle cx="250" cy="250" r="78" className="mg-ring-inner" />
 
-          <button className="cine-hint" onClick={onHowItWorks}>
-            Explore how it works
-            <span className="cine-hint-rail" />
-          </button>
-        </div>
+                  {/* Crosshair Axis Lines */}
+                  <line x1="250" y1="18" x2="250" y2="482" className="mg-axis-line" />
+                  <line x1="18" y1="250" x2="482" y2="250" className="mg-axis-line" />
 
-        <div className="cine-open-figure">
-          <BrainNetwork />
-          <span className="cine-badge">
-            <Sparkles size={13} />
-            Clinical AI Assistant
-          </span>
+                  {/* Degree Tick Marks around Outer Ring */}
+                  {Array.from({ length: 36 }).map((_, i) => {
+                    const deg = i * 10;
+                    const p1 = polarToCartesian(deg, 212);
+                    const p2 = polarToCartesian(deg, 218);
+                    return (
+                      <line
+                        key={deg}
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        className="mg-tick"
+                      />
+                    );
+                  })}
+
+                  {/* Relational Bezier Chords through the Center */}
+                  {DIAL_ENTITIES.map((source) =>
+                    source.linkedTo.map((targetId) => {
+                      const target = DIAL_ENTITIES.find((e) => e.id === targetId);
+                      if (!target) return null;
+                      const p1 = polarToCartesian(source.angle, 168);
+                      const p2 = polarToCartesian(target.angle, 168);
+                      const isActive =
+                        activeEntityId === source.id || activeEntityId === target.id;
+                      const isCritical =
+                        (source.id === 'warfarin' && target.id === 'aspirin') ||
+                        (source.id === 'aspirin' && target.id === 'warfarin') ||
+                        source.id === 'hemorrhage' ||
+                        target.id === 'hemorrhage';
+
+                      return (
+                        <path
+                          key={`${source.id}-${target.id}`}
+                          d={`M ${p1.x} ${p1.y} Q 250 250 ${p2.x} ${p2.y}`}
+                          className={`mg-chord ${isActive ? 'is-active' : ''} ${
+                            isCritical && isActive ? 'is-critical' : ''
+                          }`}
+                        />
+                      );
+                    })
+                  )}
+
+                  {/* Perimeter Entity Nodes */}
+                  {DIAL_ENTITIES.map((entity) => {
+                    const pos = polarToCartesian(entity.angle, 168);
+                    const labelPos = polarToCartesian(entity.angle, 194);
+                    const isSelected = activeEntityId === entity.id;
+                    const isConnected = activeEntity.linkedTo.includes(entity.id);
+                    const alignRight = Math.cos((entity.angle * Math.PI) / 180) < -0.15;
+
+                    return (
+                      <g
+                        key={entity.id}
+                         className={`mg-dial-node ${isSelected ? 'is-selected' : ''} ${
+                           isConnected ? 'is-connected' : ''
+                         } ${entity.type === 'VERIFIED LITERATURE' ? 'is-source' : ''}`}
+                        onMouseEnter={() => setActiveEntityId(entity.id)}
+                        onClick={() => setActiveEntityId(entity.id)}
+                      >
+                        <circle cx={pos.x} cy={pos.y} r={isSelected ? 7 : 4.5} className="mg-node-core" />
+                        {isSelected && (
+                          <circle cx={pos.x} cy={pos.y} r="14" className="mg-node-halo" />
+                        )}
+                        <text
+                          x={labelPos.x}
+                          y={labelPos.y}
+                          textAnchor={alignRight ? 'end' : 'start'}
+                          dominantBaseline="middle"
+                          className="mg-node-label"
+                        >
+                          {entity.label}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* Center Core Readout */}
+                  <circle cx="250" cy="250" r="34" className="mg-center-disc" />
+                  <text x="250" y="246" textAnchor="middle" className="mg-center-code">
+                    {activeEntity.code}
+                  </text>
+                  <text x="250" y="260" textAnchor="middle" className="mg-center-sub">
+                    1-HOP TRACE
+                  </text>
+                </svg>
+              </div>
+
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* ---------- Stages ---------- */}
-      {STAGES.map((s) => (
-        <section
-          key={s.key}
-          id={`stage-${s.key}`}
-          className={`cine-stage cine-stage-${s.side}`}
-        >
-          <div className="cine-stage-body">
-            <span className="cine-index" style={{ color: STAGE_COLOR[s.key] }}>
-              {s.index}
-            </span>
-            <h2>{s.title}</h2>
-            <p>{s.body}</p>
-            <dl className="cine-readout">
-              {s.readout.map(([k, v]) => (
-                <div key={k}>
-                  <dt>{k}</dt>
-                  <dd>{v}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-      ))}
-
-      {/* ---------- Convergence ---------- */}
-      <section className="cine-converge">
-        <p className="cine-converge-lead">Everything above resolves into one artifact</p>
-
-        <div className="cine-report">
-          <div className="cine-report-head">
-            <h3>Ranked differential</h3>
-            <span className="cine-report-id">Case 0417 · 1.4s</span>
-          </div>
-
-          {REPORT.map((r) => (
-            <div className="cine-report-row" key={r.name}>
-              <span className="cine-report-name">
-                {r.name}
-                <span className="cine-report-src">{r.src}</span>
-              </span>
-              <span className="cine-report-score">{r.score}</span>
+      {/* ==================== ACT II: THE OBSIDIAN FAULT LINE (LLM VS MEDGRAPH) ==================== */}
+      <section className="mg-obsidian-band">
+        <div className="mg-grid" data-mg-reveal>
+          <div className="mg-band-header">
+              <span className="mg-kicker">[ 01 // A CLEARER PATH ]</span>
+            <div className="mg-band-switch" role="tablist" aria-label="Compare AI paradigms">
+              <button
+                type="button"
+                className={compareMode === 'llm' ? 'is-active' : ''}
+                onClick={() => setCompareMode('llm')}
+              >
+                TYPICAL AI
+              </button>
+              <button
+                type="button"
+                className={compareMode === 'medgraph' ? 'is-active' : ''}
+                onClick={() => setCompareMode('medgraph')}
+              >
+                MEDGRAPH
+              </button>
             </div>
-          ))}
+          </div>
 
-          <div className="cine-report-flag">Reasoning halted · critical interaction</div>
+          <div className="mg-band-split">
+            <div className="mg-band-statement">
+              <h2>
+                {compareMode === 'medgraph' ? (
+                  <>
+                    When medicines conflict, check the <em>relationship.</em>
+                  </>
+                ) : (
+                  <>
+                    A text model can miss a serious <em>connection.</em>
+                  </>
+                )}
+              </h2>
+            </div>
 
-          <div className="cine-report-foot">
-            <span>3 citations · 3 verified</span>
-            <span>No fallbacks active</span>
+            <div className="mg-band-terminal">
+              <div className="mg-term-bar">
+                <span>CASE: WARFARIN + ASPIRIN · CHEST PAIN</span>
+                <span className={compareMode === 'medgraph' ? 'mg-tag-safe' : 'mg-tag-danger'}>
+                  {compareMode === 'medgraph' ? 'SAFETY CHECK' : 'TEXT ONLY'}
+                </span>
+              </div>
+
+              {compareMode === 'medgraph' ? (
+                <div className="mg-term-body">
+                  <div className="mg-trace-step is-ok">
+                    <b>01</b>
+                      <span>1 / MATCH</span>
+                      <strong>Warfarin + Aspirin found</strong>
+                  </div>
+                  <div className="mg-trace-step is-halt">
+                    <b>02</b>
+                      <span>2 / GRAPH</span>
+                      <strong>Known high-risk interaction</strong>
+                  </div>
+                  <div className="mg-trace-step is-halt">
+                    <b>03</b>
+                      <span>3 / ALERT</span>
+                      <strong>Stop and review the medicines</strong>
+                  </div>
+                  <div className="mg-trace-step is-ok">
+                    <b>04</b>
+                      <span>4 / SOURCE</span>
+                      <strong>Guideline reference attached</strong>
+                  </div>
+                </div>
+              ) : (
+                <div className="mg-term-body">
+                  <div className="mg-trace-step is-dim">
+                    <b>01</b>
+                      <span>1 / TEXT</span>
+                      <strong>Raw text collected</strong>
+                  </div>
+                  <div className="mg-trace-step is-warn">
+                    <b>02</b>
+                      <span>2 / CHECK</span>
+                      <strong>No direct interaction check</strong>
+                  </div>
+                  <div className="mg-trace-step is-warn">
+                    <b>03</b>
+                      <span>3 / ANSWER</span>
+                      <strong>May miss the medicine conflict</strong>
+                  </div>
+                  <div className="mg-trace-step is-warn">
+                    <b>04</b>
+                      <span>4 / SOURCE</span>
+                      <strong>Source still needs checking</strong>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+      </section>
 
-        <div className="cine-actions">
-          {isLoggedIn ? (
-            <button className="cine-cta" onClick={onEnterWorkspace}>
-              Enter the console <ArrowRight size={17} />
-            </button>
-          ) : (
-            <button className="cine-cta" onClick={onLogin}>
-              Enter the console <ArrowRight size={17} />
-            </button>
-          )}
-          <button className="cine-link" onClick={onHowItWorks}>
-            See how it works
-          </button>
-          {!isLoggedIn && (
-            <button className="cine-link" onClick={onRegister}>
-              Create an account
-            </button>
-          )}
+      {/* ==================== ACT III: THE ARCHITECTURAL FOLDING INDEX ==================== */}
+      <section className="mg-index-section">
+        <div className="mg-grid">
+          <div className="mg-index-intro" data-mg-reveal>
+              <span className="mg-kicker">[ 02 // HOW IT HELPS ]</span>
+            <h2>
+              Four simple checks for a <em>clearer</em> answer.
+            </h2>
+          </div>
+
+          <div className="mg-index-list" data-mg-reveal>
+            {INDEX_CAPABILITIES.map((item) => {
+              const isOpen = openRow === item.idx;
+              return (
+                <article
+                  key={item.idx}
+                  className={`mg-index-row ${isOpen ? 'is-open' : ''}`}
+                  onMouseEnter={() => setOpenRow(item.idx)}
+                  onClick={() => setOpenRow(item.idx)}
+                >
+                  <div className="mg-row-main">
+                    <span className="mg-row-num">[{item.idx}]</span>
+                    <div className="mg-row-title-block">
+                      <small>{item.code}</small>
+                      <h3>{item.title}</h3>
+                    </div>
+                    <p className="mg-row-summary">{item.summary}</p>
+                    <span className="mg-row-kicker">{item.kicker}</span>
+                  </div>
+
+                  <div className="mg-row-drawer">
+                    <div className="mg-signal-track">
+                      {item.signal.map((node, i) => (
+                        <React.Fragment key={node}>
+                          <span className="mg-signal-pill">{node}</span>
+                          {i < item.signal.length - 1 && (
+                            <span className="mg-signal-arrow">———→</span>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
+      </section>
 
-        <p className="cine-fineprint">
-          Research prototype · Not a certified medical device
-        </p>
+      {/* ==================== ACT IV: MONUMENTAL DUAL DOORS (CLINICIAN VS PATIENT) ==================== */}
+      <section className="mg-doors-section">
+        <div className="mg-grid">
+          <div className="mg-doors-header" data-mg-reveal>
+              <span className="mg-kicker">[ 03 // CHOOSE YOUR VIEW ]</span>
+            <h2>
+              Two views. One <em>clear path.</em>
+            </h2>
+          </div>
+
+          <div className="mg-doors-split" data-mg-reveal>
+            {/* Door 01: Clinician Console */}
+            <div
+              className="mg-door"
+              onClick={isLoggedIn ? onEnterWorkspace : onLogin}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && (isLoggedIn ? onEnterWorkspace() : onLogin())}
+            >
+              <div className="mg-door-top">
+                <span>SURFACE // 01</span>
+                <span>NPI VERIFIED</span>
+              </div>
+              <h3>
+                Practitioner
+                <br />
+                <em>Decision Console</em>
+              </h3>
+              <p>
+                Review a case, see the important links, and check the sources behind each result.
+              </p>
+              <div className="mg-door-specs">
+                <span>CASE RESULTS</span>
+                <span>LINKS</span>
+                <span>SOURCES</span>
+              </div>
+              <div className="mg-door-action">
+                <span>{isLoggedIn ? 'OPEN PRACTITIONER CONSOLE' : 'AUTHENTICATE CLINICIAN'}</span>
+                <ArrowRight size={18} />
+              </div>
+            </div>
+
+            {/* Door 02: Patient Portal */}
+            <div
+              className="mg-door"
+              onClick={isLoggedIn ? onEnterWorkspace : onRegister}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && (isLoggedIn ? onEnterWorkspace() : onRegister())}
+            >
+              <div className="mg-door-top">
+                <span>SURFACE // 02</span>
+                <span>PLAIN-LANGUAGE SAFETY</span>
+              </div>
+              <h3>
+                Patient
+                <br />
+                <em>Safety Portal</em>
+              </h3>
+              <p>
+                Check daily medicines for known safety problems and take a simple summary to your clinician.
+              </p>
+              <div className="mg-door-specs">
+                <span>MEDICINE CHECK</span>
+                <span>CARE STEPS</span>
+                <span>VISIT NOTES</span>
+              </div>
+              <div className="mg-door-action">
+                <span>{isLoggedIn ? 'OPEN PATIENT PORTAL' : 'INITIALIZE PATIENT CHECK'}</span>
+                <ArrowRight size={18} />
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Monograph Colophon Link to How It Works */}
+          <div className="mg-colophon-strip">
+            <div>
+              <span className="mg-kicker">CASE MONOGRAPH // 0417</span>
+               <p>See how one case moves from intake to a supported result.</p>
+            </div>
+            <button type="button" className="mg-btn-ruled" onClick={onHowItWorks}>
+              <span>READ THE CASE 0417 MONOGRAPH</span>
+              <ArrowRight size={15} />
+            </button>
+          </div>
+        </div>
       </section>
     </main>
   );

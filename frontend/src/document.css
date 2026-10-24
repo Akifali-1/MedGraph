@@ -233,7 +233,7 @@
   margin: 0;
   padding: 4.5rem 0;
   background: var(--console-bg);
-  color: #f2ece0;
+  color: #f2efe9;
   overflow: hidden;
 }
 
@@ -265,7 +265,7 @@
 .doc-halt h2 {
   max-width: 22ch;
   margin-bottom: 1.5rem;
-  color: #fbf7ef;
+  color: #f2efe9;
   font-family: var(--font-display);
   font-size: clamp(2rem, 4.6vw, 3.25rem);
   font-weight: 300;
@@ -291,7 +291,7 @@
 .doc-halt-drug {
   padding: 0.55rem 1rem;
   border: 1px solid rgba(212, 118, 127, 0.5);
-  color: #f2ece0;
+  color: #f2efe9;
 }
 
 .doc-halt-op {
@@ -308,7 +308,7 @@
 
 .doc-halt-body {
   max-width: 56ch;
-  color: #c8c0b1;
+  color: #9e9b93;
   font-family: var(--font-display);
   font-size: 1.0625rem;
   line-height: 1.68;
@@ -317,8 +317,8 @@
 .doc-halt-trace {
   margin-top: 2.5rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #3a372c;
-  color: #8b8474;
+  border-top: 1px solid var(--rule);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 0.75rem;
   line-height: 2;
@@ -329,7 +329,7 @@
 }
 
 .doc-halt-trace .ok {
-  color: #7fae90;
+  color: #4fb389;
 }
 
 .doc-halt-trace .stop {

@@ -10,6 +10,7 @@ class Config:
 
     # Google Gemini
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
     # Pinecone
     PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
@@ -37,7 +38,11 @@ class Config:
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
     AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-    SAGEMAKER_ENDPOINT_NAME = os.getenv("SAGEMAKER_ENDPOINT_NAME")
+    SAGEMAKER_ENDPOINT_NAME = (
+        None
+        if os.getenv("DISABLE_SAGEMAKER", "false").lower() == "true"
+        else os.getenv("SAGEMAKER_ENDPOINT_NAME")
+    )
 
     # Google SSO
     GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")

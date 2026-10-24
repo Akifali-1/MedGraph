@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { 
-  User, 
   FileText, 
   Plus, 
   X, 
@@ -12,7 +11,6 @@ import {
   CheckCircle2,
   Calendar,
   Stethoscope,
-  Briefcase,
   Search
 } from 'lucide-react';
 
@@ -50,6 +48,7 @@ const PATIENT_VISIT_HISTORY = [
 ];
 
 export default function PatientWorkspace({
+  patient,
   age,
   setAge,
   sex,
@@ -76,7 +75,24 @@ export default function PatientWorkspace({
   const [patientActiveTab, setPatientActiveTab] = useState('health-check'); // 'health-check' | 'visit-history'
   const [historySearch, setHistorySearch] = useState('');
 
-  const filteredVisits = PATIENT_VISIT_HISTORY.filter(visit => {
+  const patientName = patient?.name || 'Patient';
+  const patientId = patient?.sub
+    ? `PAT-${patient.sub.replace(/^usr_/, '').slice(-8).toUpperCase()}`
+    : 'PATIENT';
+  const patientInitials = patientName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join('') || 'PT';
+  const visitHistory = useMemo(
+    () => patient?.email?.toLowerCase() === 'arthur.pendelton@gmail.com'
+      ? PATIENT_VISIT_HISTORY
+      : [],
+    [patient?.email]
+  );
+
+  const filteredVisits = visitHistory.filter(visit => {
     const query = historySearch.toLowerCase().trim();
     if (!query) return true;
     return (
@@ -94,12 +110,12 @@ export default function PatientWorkspace({
       <div className="clinical-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', padding: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
           <div style={{ width: '54px', height: '54px', borderRadius: '50%', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-cyan)', fontWeight: '800', fontSize: '20px' }}>
-            AP
+            {patientInitials}
           </div>
           <div>
-            <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text-contrast)' }}>Arthur Pendelton</h2>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text-contrast)' }}>{patientName}</h2>
             <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', alignItems: 'center' }}>
-              <span><strong>Patient ID:</strong> <span style={{ fontFamily: 'var(--font-mono)' }}>PAT-0982</span></span>
+              <span><strong>Patient ID:</strong> <span style={{ fontFamily: 'var(--font-mono)' }}>{patientId}</span></span>
               <span style={{ color: 'var(--text-muted)' }}>•</span>
               <span><strong>Age:</strong> {age || "—"} Years</span>
               <span style={{ color: 'var(--text-muted)' }}>•</span>
@@ -122,7 +138,7 @@ export default function PatientWorkspace({
             onClick={() => setPatientActiveTab('visit-history')}
             style={{ fontSize: '13px', padding: '10px 20px' }}
           >
-            Attending Visit History ({PATIENT_VISIT_HISTORY.length})
+            Attending Visit History ({visitHistory.length})
           </button>
         </div>
       </div>
@@ -309,7 +325,20 @@ export default function PatientWorkspace({
                   </div>
 
                   {/* Warning Banner */}
-                  {(results.requires_immediate_intervention || results.critical_flag) ? (
+                  {results.rag_status === 'no_results' ? (
+                    <div className="triage-banner warning" style={{ margin: 0, backgroundColor: 'rgba(245, 158, 11, 0.06)', borderColor: 'rgba(245, 158, 11, 0.35)' }}>
+                      <ShieldAlert className="triage-icon" size={26} style={{ color: 'var(--accent-amber)' }} />
+                      <div>
+                        <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>No Relevant Evidence Found</h4>
+                        <p className="triage-desc" style={{ color: 'var(--text-primary)', marginTop: '6px', fontSize: '13.5px', lineHeight: '1.5' }}>
+                          {results.rag_message || 'No relevant clinical guideline evidence was found for this query.'}
+                        </p>
+                        <p className="triage-desc" style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '13.5px', lineHeight: '1.5' }}>
+                          Add more specific symptoms, medications, or medical history and run the evaluation again.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (results.requires_immediate_intervention || results.critical_flag) ? (
                     <div className="triage-banner critical" style={{ margin: 0 }}>
                       <ShieldAlert className="triage-icon" size={26} />
                       <div>
@@ -372,7 +401,7 @@ export default function PatientWorkspace({
                             onClick={() => setCheckedWorkups(prev => ({ ...prev, p1: !prev.p1 }))}
                           >
                             <CheckCircle2 size={16} className="workup-icon" />
-                            <span>Contact Dr. Evelyn Carter to review your combined blood-thinner schedule.</span>
+                             <span>Contact your prescribing clinician to review your combined blood-thinner schedule.</span>
                           </div>
                           <div 
                             className={`workup-checkbox-card ${checkedWorkups['p2'] ? 'checked' : ''}`}
@@ -410,7 +439,7 @@ export default function PatientWorkspace({
                             onClick={() => setCheckedWorkups(prev => ({ ...prev, g2: !prev.g2 }))}
                           >
                             <CheckCircle2 size={16} className="workup-icon" />
-                            <span>Notify Dr. Carter if you experience any new symptoms.</span>
+                             <span>Notify your clinician if you experience any new symptoms.</span>
                           </div>
                           {results.recommended_workup && results.recommended_workup.map((w, wIdx) => {
                             const key = `rec-${wIdx}`;

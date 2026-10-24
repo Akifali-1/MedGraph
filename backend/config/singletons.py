@@ -116,10 +116,10 @@ def get_gemini_chat():
         google_key = Config.GOOGLE_API_KEY
         if google_key and not (google_key.strip().lower().startswith("your_") or "placeholder" in google_key.lower() or not google_key.strip()):
             from langchain_google_genai import ChatGoogleGenerativeAI
-            logger.info("Initializing ChatGoogleGenerativeAI (gemini-2.5-flash-lite) Singleton...")
+            logger.info("Initializing ChatGoogleGenerativeAI (%s) Singleton...", Config.GEMINI_MODEL)
             _gemini_chat = ChatGoogleGenerativeAI(
                 google_api_key=google_key, 
-                model="gemini-2.5-flash-lite", 
+                model=Config.GEMINI_MODEL,
                 temperature=0.1,
                 request_timeout=120
             )

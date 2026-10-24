@@ -139,7 +139,7 @@ jobs:
 
       - name: Deploy static files to S3
         run: |
-          aws s3 sync frontend/dist/ s3://medgraph-prod-frontend-site/ --delete
+          aws s3 sync frontend/dist/ "s3://${{ secrets.FRONTEND_BUCKET_NAME }}/" --delete
 
       - name: Invalidate CloudFront Cache
         run: |

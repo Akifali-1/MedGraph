@@ -164,26 +164,19 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
       <div className="doc-page">
         <aside className="doc-margin">
           <div className="doc-note doc-sticky">
-            <span className="doc-note-label">Resolved against</span>
-            RxNav clinical vocabularies and the Columbia symptom set. Only canonical
-            terms have edges in the graph.
+              <span className="doc-note-label">Names checked</span>
+              Everyday words are matched to the terms used by the graph.
             <cite>entity_linker.py</cite>
           </div>
         </aside>
         <div className="doc-body">
           <section className="doc-move" data-rise>
-            <h2>The patient does not speak in ontologies</h2>
+            <h2>Patients use everyday words</h2>
             <p>
-              Intake arrives as prose. Someone reports pressure in their chest and a
-              sweat they cannot explain, and none of those words are keys in a
-              knowledge graph. Before anything can be retrieved, the language has to
-              be reconciled with the vocabulary the data was indexed under.
+              A patient may say “chest pressure” or “sweating”. The system matches those
+              words to the terms used in its medical sources.
             </p>
-            <p>
-              That reconciliation is unglamorous and load-bearing. Miss it and the
-              graph returns nothing, the retriever returns noise, and the model
-              confabulates over the gap without ever signalling that it did.
-            </p>
+            <p>This first step keeps the rest of the case on the right track.</p>
           </section>
         </div>
       </div>
@@ -206,14 +199,11 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
         <div className="doc-body">
           <section className="doc-move" data-rise>
             <h2>
-              Two medications, <em>one edge between them</em>
+              Two medicines, <em>one important link</em>
             </h2>
             <p>
-              With the terms resolved, the medication list goes to the graph before it
-              goes anywhere near a language model. Warfarin and aspirin are both
-              present. In a graph seeded from NIH RxNav, they are not two independent
-              facts. They are two nodes with a typed edge between them, and that edge
-              carries a severity.
+              The medication list is checked before any generated answer. Warfarin and
+              aspirin are both present, with a known high-risk link between them.
             </p>
           </section>
         </div>
@@ -223,9 +213,9 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
       <section className="doc-halt">
         <div className="doc-halt-inner">
           <div className="doc-halt-rule" />
-          <span className="doc-halt-tag">Reasoning halted</span>
+          <span className="doc-halt-tag">Safety stop</span>
           <h2>
-            The pipeline stops <em>here</em>
+            The check stops <em>here</em>
           </h2>
 
           <div className="doc-halt-pair">
@@ -236,10 +226,8 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
           </div>
 
           <p className="doc-halt-body">
-            Anticoagulant and antiplatelet together, synergistic bleeding risk. This is
-            a graph lookup, not an inference, so there is nothing for the model to be
-            uncertain about and no reason to spend a generation call before saying so.
-            The orchestrator routes straight to an alert and returns.
+            Warfarin and aspirin together can raise bleeding risk. Because the conflict
+            is already known, the app shows an alert before generating more text.
           </p>
 
           <div className="doc-halt-trace">
@@ -247,8 +235,8 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
             <span className="ok">query_knowledge_graph ok 1 interaction</span>
             <span className="stop">critical_interaction_flag true</span>
             <span className="stop">route_after_graph alert_early</span>
-            <span>retrieve_guidelines skipped</span>
-            <span>llm_reasoning skipped</span>
+            <span>source lookup continued</span>
+            <span>extra generation skipped</span>
           </div>
         </div>
       </section>
@@ -257,7 +245,7 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
       <div className="doc-page">
         <aside className="doc-margin">
           <div className="doc-note doc-sticky">
-            <span className="doc-note-label">Retrieved</span>
+            <span className="doc-note-label">Source</span>
             <span className="doc-note-quote">
               Concurrent anticoagulant and antiplatelet therapy substantially increases
               the risk of major haemorrhage and should be limited to patients with a
@@ -270,16 +258,11 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
           <section className="doc-move" data-rise>
             <h2>Every claim carries its source</h2>
             <p>
-              The alert does not travel alone. Guideline text is retrieved for the
-              interaction and attached to the finding, and each citation the system
-              emits is checked against the passages actually pulled for this request.
-              References that cannot be matched are removed and the report is flagged
-              rather than quietly shipped.
+              The alert includes a guideline reference. Each citation is checked against
+              the source text used for the case.
             </p>
             <p>
-              This is the part that matters. A model that cites nothing can be doubted.
-              A model that cites something it invented cannot, and that is the failure
-              mode worth engineering against.
+              If a reference cannot be checked, it is left out of the report.
             </p>
           </section>
         </div>
@@ -290,8 +273,7 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
         <aside className="doc-margin">
           <div className="doc-note doc-sticky">
             <span className="doc-note-label">Note</span>
-            Ranking below reflects the halted path. Cardiac differentials are carried
-            forward for the clinician but were not model-generated on this run.
+            The likely cardiac findings stay visible for review.
           </div>
         </aside>
         <div className="doc-body">
@@ -335,9 +317,8 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
               Run a case <em>of your own</em>
             </h2>
             <p>
-              Submit a patient profile and the console returns the same apparatus: the
-              resolved terms, the graph result, the retrieved evidence, the reasoning
-              trace, and every citation checked against what was actually retrieved.
+              Enter a patient profile and review the terms, findings, sources, and next
+              steps in one place.
             </p>
             <div className="doc-cta-row">
               {isLoggedIn ? (

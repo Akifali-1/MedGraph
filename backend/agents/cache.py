@@ -45,6 +45,8 @@ class RedisCacheManager:
         payload = {
             "symptoms": sorted_symptoms,
             "medications": sorted_medications,
+            "comorbidities": sorted(c.strip().lower() for c in patient.comorbidities),
+            "duration_hours": patient.duration_hours,
             "age": patient.age,
             "sex": patient.sex.upper(),
             "doctor_id": doctor_id or "global"

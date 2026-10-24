@@ -1,7 +1,12 @@
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 import os
 import uuid
 import logging
-import sys
 import time
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
@@ -122,15 +127,6 @@ app = FastAPI(
     description="Clinical Decision Support System (portfolio prototype)",
     version="1.0.0",
     lifespan=lifespan
-)
-
-# Enable CORS for local frontend dev server & cross-origin requests
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # Set limiter in app state
@@ -281,10 +277,13 @@ def google_login(payload: GoogleLoginRequest):
     
     credential = payload.credential
 
-    # The demo bypass mints a real token for whatever role is asked for, so it
-    # must never be reachable in a deployed environment. Off unless explicitly
-    # enabled.
-    _allow_mock = os.getenv("ALLOW_MOCK_AUTH") == "true" or os.getenv("TESTING") == "true"
+    # The demo bypass mints a real token for whatever role is asked for. It is
+    # intentionally restricted to an explicit test environment; a production
+    # .env must never be able to turn this into a public login path.
+    _allow_mock = (
+        os.getenv("TESTING") == "true"
+        and os.getenv("ALLOW_MOCK_AUTH") == "true"
+    )
 
     if credential == "mock_google_jwt_token":
         if not _allow_mock:
@@ -293,12 +292,20 @@ def google_login(payload: GoogleLoginRequest):
         google_user = {
             "email": "demo.doctor@gmail.com" if payload.role == Role.medical_practitioner else "demo.patient@gmail.com",
             "name": "Dr. Alex Taylor, MD" if payload.role == Role.medical_practitioner else "Alex Taylor",
-            "sub": "google_123456789"
+            "sub": "google_123456789",
+            "email_verified": True,
         }
     else:
         # Verify the ID token against Google's public keys. Decoding the payload
         # without checking the signature would let anyone forge an identity and
         # any role, so an unverifiable token is rejected outright.
+        client_id = (Config.GOOGLE_CLIENT_ID or "").strip()
+        if not client_id or client_id.lower().startswith("your_") or "placeholder" in client_id.lower():
+            raise HTTPException(
+                status_code=503,
+                detail="Google sign-in is unavailable: GOOGLE_CLIENT_ID is not configured.",
+            )
+
         try:
             from google.oauth2 import id_token as google_id_token
             from google.auth.transport import requests as google_requests
@@ -306,13 +313,15 @@ def google_login(payload: GoogleLoginRequest):
             google_user = google_id_token.verify_oauth2_token(
                 credential,
                 google_requests.Request(),
-                Config.GOOGLE_CLIENT_ID or None,
+                client_id,
             )
             if google_user.get("iss") not in (
                 "accounts.google.com",
                 "https://accounts.google.com",
             ):
                 raise ValueError("Unexpected token issuer.")
+            if google_user.get("email_verified") is not True:
+                raise ValueError("Google email is not verified.")
         except ImportError:
             log.error("google_auth_library_missing")
             raise HTTPException(
@@ -326,6 +335,9 @@ def google_login(payload: GoogleLoginRequest):
     email = google_user.get("email", "").lower()
     if not email:
         raise HTTPException(status_code=400, detail="Google token does not contain an email address.")
+
+    if not google_user.get("sub"):
+        raise HTTPException(status_code=401, detail="Google token does not contain a stable subject identifier.")
         
     name = google_user.get("name", "Google User")
     sub = google_user.get("sub", f"g_{hashlib.sha1(email.encode()).hexdigest()[:12]}")
@@ -336,7 +348,7 @@ def google_login(payload: GoogleLoginRequest):
             sub=f"usr_{sub}",
             email=email,
             role=payload.role,
-            tenant_id="demo-clinic",
+            tenant_id=os.getenv("DEFAULT_TENANT_ID", "demo-clinic"),
             name=name,
             clinic="Google Integrated Center" if payload.role == Role.medical_practitioner else None,
             npi="9999999999" if payload.role == Role.medical_practitioner else None
@@ -372,6 +384,10 @@ def diagnose(
     Primary mode: 'react' (Parallel-Retrieval Augmented ReAct Agent).
     Legacy fallback: 'dag' (static orchestrator).
     """
+    mode = mode.strip().lower()
+    if mode not in {"react", "dag"}:
+        raise HTTPException(status_code=400, detail="mode must be either 'react' or 'dag'")
+
     start_time = time.time()
     request_id = str(uuid.uuid4())
     
@@ -394,7 +410,7 @@ def diagnose(
         
         # Step 2: Fetch baseline Graph & Guidelines context (Option A: RA-ReAct)
         from backend.graph.tools import query_knowledge_graph
-        from backend.retrieval.retriever import get_relevant_guidelines
+        from backend.retrieval.retriever import get_relevant_guidelines, build_clinical_query
         
         initial_ddi = query_knowledge_graph.invoke({
             "patient_medications": resolved_patient.medications,
@@ -402,7 +418,7 @@ def diagnose(
             "doctor_id": doctor_id
         })
         
-        query_text = f"Patient presenting with symptoms: {', '.join(resolved_patient.symptoms)}. Previous medical history: {', '.join(resolved_patient.comorbidities)}."
+        query_text = build_clinical_query(resolved_patient)
         initial_guidelines = get_relevant_guidelines(query_text, top_n=5, doctor_id=doctor_id)
         
         # Step 3: Invoke the custom ReAct agent graph
@@ -444,10 +460,15 @@ def health_check(request: Request):
         s.close()
         dependencies["redis"] = "healthy"
     except Exception as e:
-        dependencies["redis"] = f"unhealthy: {str(e)}"
-        # If we are in testing/CI, we allow Redis to be offline without marking the whole system unhealthy
         import os
-        if not (os.getenv("CI") == "true" or os.getenv("TESTING") == "true" or os.getenv("MOCK_REDIS") == "true"):
+        redis_is_mock = (
+            os.getenv("CI") == "true"
+            or os.getenv("TESTING") == "true"
+            or os.getenv("MOCK_REDIS") == "true"
+        )
+        dependencies["redis"] = "mock (healthy)" if redis_is_mock else f"unhealthy: {str(e)}"
+        # Offline Redis is an explicit local/test mode, not a failed dependency.
+        if not redis_is_mock:
             is_healthy = False
 
     # 2. Neo4j Check (uses active driver singleton)

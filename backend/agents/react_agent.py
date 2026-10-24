@@ -12,8 +12,11 @@ from langgraph.graph.message import add_messages
 from backend.models.patient import PatientInput
 from backend.retrieval.retriever import get_relevant_guidelines
 from backend.graph.tools import query_knowledge_graph
+from backend.agents.evidence import verify_diagnosis_citations
 
 logger = logging.getLogger(__name__)
+
+NO_RAG_RESULTS_MESSAGE = "No relevant clinical guideline evidence was found for this query."
 
 # State Definition
 class ReActState(TypedDict):
@@ -29,6 +32,7 @@ class ReActState(TypedDict):
     recommended_workup: List[str]
     critical_flag: bool
     citation_warnings_flagged: bool
+    submitted: bool
     final_output: Optional[Dict[str, Any]]
 
 # Predefined Clinical Case Profiles (Mocks)
@@ -316,10 +320,16 @@ def tool_node(state: ReActState) -> Dict[str, Any]:
                 if key.lower() in test.lower() or test.lower() in key.lower():
                     normalized_test = key
                     break
-            obs = state["clinical_case"].get("labs", {}).get(normalized_test, f"Test {test} normal/inconclusive.")
+            obs = state["clinical_case"].get("labs", {}).get(
+                normalized_test, f"No measured result is available for test {test}."
+            )
         elif name == "query_guidelines":
             q = args.get("query", "")
-            obs = str(get_relevant_guidelines(q, top_n=3, doctor_id=state.get("doctor_id")))
+            chunks = get_relevant_guidelines(q, top_n=3, doctor_id=state.get("doctor_id"))
+            obs = str(chunks) if chunks else NO_RAG_RESULTS_MESSAGE
+            updates["initial_guidelines"] = list(dict.fromkeys(
+                updates.get("initial_guidelines", state.get("initial_guidelines", [])) + chunks
+            ))
         elif name == "query_knowledge_graph":
             meds = args.get("medications", [])
             syms = args.get("symptoms", [])
@@ -334,6 +344,7 @@ def tool_node(state: ReActState) -> Dict[str, Any]:
             updates["diagnoses"] = args.get("diagnoses", [])
             updates["recommended_workup"] = args.get("recommended_workup", [])
             updates["critical_flag"] = args.get("critical_flag", False)
+            updates["submitted"] = True
         else:
             obs = f"Error: Tool {name} not found."
             
@@ -366,7 +377,7 @@ def route_next(state: ReActState) -> str:
         
     for tc in tool_calls:
         if tc["name"] == "submit_diagnosis":
-            return "end"
+            return "tools"
             
     if len(state.get("steps", [])) >= 5:
         logger.warning("react_loop_maximum_steps_reached")
@@ -391,7 +402,11 @@ def build_react_graph():
             "end": END
         }
     )
-    workflow.add_edge("tools", "agent")
+    workflow.add_conditional_edges(
+        "tools",
+        lambda state: "end" if state.get("submitted") else "agent",
+        {"end": END, "agent": "agent"},
+    )
     
     return workflow.compile()
 
@@ -570,24 +585,68 @@ def simulate_react_flow(state: ReActState) -> Dict[str, Any]:
             "CBC",
             "Observation"
         ]
-        
+
+    has_graph_evidence = bool(
+        state["initial_ddi"].get("probable_diseases")
+        or state["initial_ddi"].get("drug_interactions")
+    )
+    if not state.get("initial_guidelines") and not has_graph_evidence:
+        diagnoses = []
+        workup = [NO_RAG_RESULTS_MESSAGE]
+        trace_steps = [{
+            "thought": "No grounded evidence was returned by the guideline or knowledge graph retrievers.",
+            "action": "submit_diagnosis(diagnoses=[])",
+            "observation": NO_RAG_RESULTS_MESSAGE,
+        }]
+
+    diagnoses, citation_warnings = verify_diagnosis_citations(
+        diagnoses, state.get("initial_guidelines", [])
+    )
     return {
         "diagnoses": diagnoses,
         "drug_interactions": state["initial_ddi"].get("drug_interactions", []),
         "critical_flag": critical_flag,
         "iterations_taken": len(trace_steps),
-        "citation_warnings_flagged": False,
+        "citation_warnings_flagged": citation_warnings,
         "recommended_workup": workup,
-        "trace_steps": trace_steps
+        "trace_steps": trace_steps,
+        "rag_status": "found" if state.get("initial_guidelines") else "no_results",
+        "rag_message": None if state.get("initial_guidelines") else NO_RAG_RESULTS_MESSAGE
     }
 
 def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines: List[str], request_id: str, doctor_id: Optional[str] = None) -> Dict[str, Any]:
     """Main execution entrance for RA-ReAct workflow. Selects live run or mock simulation."""
     google_key = os.getenv("GOOGLE_API_KEY")
     is_testing = os.getenv("TESTING") == "true" or os.getenv("CI") == "true"
+    demo_mode = is_testing or os.getenv("MEDGRAPH_DEMO_MODE", "false").lower() == "true"
+
+    from backend.config.singletons import get_neo4j_client
+    neo4j_fallback = True
+    try:
+        neo4j_fallback = get_neo4j_client().use_mock
+    except Exception:
+        pass
+
+    has_graph_evidence = bool(
+        initial_ddi.get("probable_diseases") or initial_ddi.get("drug_interactions")
+    )
+    if not initial_guidelines and not has_graph_evidence:
+        return {
+            "diagnoses": [], "drug_interactions": [], "critical_flag": False,
+            "iterations_taken": 0, "citation_warnings_flagged": False,
+            "recommended_workup": [], "trace_steps": [],
+            "status": "no_results", "message": NO_RAG_RESULTS_MESSAGE,
+            "rag_status": "no_results", "rag_message": NO_RAG_RESULTS_MESSAGE,
+            "fallbacks_active": {"llm": False, "neo4j": neo4j_fallback},
+        }
     
     system_prompt = (
-        f"You are an advanced Clinical Decision Support Agent co-pilot running an interactive diagnostic workup.\n"
+        f"You are an advanced clinical decision-support copilot running an auditable workup. "
+        f"You are not a clinician and must not present uncertain or unsupported content as fact.\n"
+        f"Ground every conclusion only in the patient data, graph relationships, retrieved guideline passages, "
+        f"and observations returned by tools. Never invent symptoms, laboratory values, imaging findings, "
+        f"citations, or treatment instructions. If the evidence is missing or conflicting, submit an empty "
+        f"diagnoses list and explain that no grounded conclusion is available.\n\n"
         f"Patient demographics:\n"
         f"- Age: {patient.age}\n"
         f"- Sex: {patient.sex}\n"
@@ -598,7 +657,7 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
         f"- Drug-Drug Interactions: {initial_ddi.get('drug_interactions', [])}\n"
         f"- Symptom-Disease Links: {initial_ddi.get('probable_diseases', [])}\n"
         f"- Guideline Citations: {initial_guidelines}\n\n"
-        f"Your goal is to investigate this case step-by-step using clinical tools, evaluate lab findings, "
+        f"Your goal is to investigate this case step-by-step using clinical tools, evaluate only returned findings, "
         f"consult guidelines, and conclude by calling `submit_diagnosis`.\n"
         f"To inspect vital signs: use `check_patient_vitals`.\n"
         f"To order test findings (EKG, Troponin, Head CT, CBC, BMP, PT_INR, Chest_Xray): use `order_lab_or_imaging_test`.\n"
@@ -608,16 +667,20 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
         f"- `diagnoses`: Ranked differentials with confidence (0.0-1.0), evidence, and citations.\n"
         f"- `recommended_workup`: Follow-up tests or immediate actions.\n"
         f"- `critical_flag`: True if a high-severity drug interaction alert exists.\n\n"
-        f"IMPORTANT: Always call a tool — never reply with plain text."
+        f"IMPORTANT: Always call exactly one or more tools — never reply with plain text. "
+        f"Finish by calling submit_diagnosis with confidence values between 0.0 and 1.0. "
+        f"A citation is valid only when its specific source or guideline identifier appears in retrieved context."
     )
 
     # Initialize basic state — SystemMessage goes first so it anchors the conversation history.
     # add_messages reducer will accumulate: [SystemMessage, HumanMessage, AIMessage, ToolMessage, ...]
     initial_state = {
         "request_id": request_id,
-        "doctor_id": doctor_id or "global",
+        "doctor_id": doctor_id,
         "patient_data": patient.model_dump(),
-        "clinical_case": generate_clinical_case(patient),
+        # Synthetic vitals/labs are strictly demo/test data. Production requests
+        # must never fabricate clinical observations when a test was not supplied.
+        "clinical_case": generate_clinical_case(patient) if demo_mode else {"vitals": {}, "labs": {}},
         "steps": [],
         "messages": [
             SystemMessage(content=system_prompt),
@@ -627,24 +690,20 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
         "initial_guidelines": initial_guidelines,
         "diagnoses": [],
         "recommended_workup": [],
-        "critical_flag": False,
+        "critical_flag": bool(initial_ddi.get("critical_interaction_flag")),
+        "submitted": False,
         "citation_warnings_flagged": False,
         "final_output": None
     }
     
-    from backend.config.singletons import get_neo4j_client
-    neo4j_fallback = True
-    try:
-        neo4j_fallback = get_neo4j_client().use_mock
-    except Exception:
-        pass
-
     if neo4j_fallback:
         print("[FALLBACK ACTIVE] Neo4j database is offline. Running with local in-memory knowledge graph data.")
     else:
         print("[CONNECTED LIVE] Connected to live Neo4j cloud graph instance.")
 
     if is_testing or not google_key or google_key.strip().lower().startswith("your_") or "placeholder" in google_key.lower():
+        if not demo_mode:
+            return _unavailable_response(initial_ddi, initial_guidelines, neo4j_fallback)
         print("[FALLBACK ACTIVE] Google Gemini API key is missing or invalid. Running in Simulated Offline LLM mode.")
         res = simulate_react_flow(initial_state)
         res["fallbacks_active"] = {
@@ -657,12 +716,13 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
         logger.info("Executing live LangGraph ReAct agent co-pilot.")
         result_state = react_agent_graph.invoke(initial_state)
         
-        # route_next exits on submit_diagnosis BEFORE tool_node runs, so state["diagnoses"]
-        # may still be empty. Recover by scanning accumulated messages for the tool call args.
         diagnoses = result_state.get("diagnoses", [])
         recommended_workup = result_state.get("recommended_workup", [])
-        critical_flag = result_state.get("critical_flag", False)
+        critical_flag = bool(initial_ddi.get("critical_interaction_flag")) or result_state.get("critical_flag", False)
         
+        if not result_state.get("submitted"):
+            return _unavailable_response(initial_ddi, initial_guidelines, neo4j_fallback)
+
         if not diagnoses:
             for msg in result_state.get("messages", []):
                 for tc in getattr(msg, "tool_calls", []):
@@ -675,15 +735,20 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
                 if diagnoses:
                     break
         
+        diagnoses, citation_warnings = verify_diagnosis_citations(
+            diagnoses, result_state.get("initial_guidelines", [])
+        )
         # Compile response matching schema
         output = {
             "diagnoses": diagnoses,
             "drug_interactions": initial_ddi.get("drug_interactions", []),
             "critical_flag": critical_flag,
             "iterations_taken": len(result_state.get("steps", [])),
-            "citation_warnings_flagged": result_state.get("citation_warnings_flagged", False),
+            "citation_warnings_flagged": citation_warnings,
             "recommended_workup": recommended_workup,
             "trace_steps": result_state.get("steps", []),
+            "rag_status": "found" if result_state.get("initial_guidelines") else "no_results",
+            "rag_message": None if result_state.get("initial_guidelines") else NO_RAG_RESULTS_MESSAGE,
             "fallbacks_active": {
                 "llm": False,
                 "neo4j": neo4j_fallback
@@ -691,6 +756,9 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
         }
         return output
     except Exception as e:
+        if not demo_mode:
+            logger.error("Live ReAct agent failed: %s", e)
+            return _unavailable_response(initial_ddi, initial_guidelines, neo4j_fallback)
         print(f"[FALLBACK ACTIVE] Live ReAct agent run failed ({e}). Reverting to Simulated LLM fallback.")
         res = simulate_react_flow(initial_state)
         res["fallbacks_active"] = {
@@ -698,3 +766,19 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
             "neo4j": neo4j_fallback
         }
         return res
+
+
+def _unavailable_response(initial_ddi: dict, guidelines: List[str], neo4j_fallback: bool) -> Dict[str, Any]:
+    """Service errors must not be converted into simulated diagnoses."""
+    return {
+        "diagnoses": [],
+        "drug_interactions": initial_ddi.get("drug_interactions", []),
+        "critical_flag": bool(initial_ddi.get("critical_interaction_flag")),
+        "iterations_taken": 0, "citation_warnings_flagged": False,
+        "recommended_workup": [], "trace_steps": [],
+        "status": "unavailable",
+        "message": "The clinical reasoning service is unavailable. Please try again.",
+        "rag_status": "found" if guidelines else "no_results",
+        "rag_message": None if guidelines else NO_RAG_RESULTS_MESSAGE,
+        "fallbacks_active": {"llm": False, "neo4j": neo4j_fallback},
+    }

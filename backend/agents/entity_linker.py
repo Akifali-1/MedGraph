@@ -73,30 +73,36 @@ def resolve_clinical_entities(patient_input: PatientInput) -> PatientInput:
     """
     nlp = get_medspacy_nlp()
     
-    resolved_symptoms: Set[str] = set()
-    resolved_medications: Set[str] = set()
+    # Keep input order stable. Sets made the generated RAG query change between
+    # runs, which made debugging and cache behavior unnecessarily nondeterministic.
+    resolved_symptoms: List[str] = []
+    resolved_medications: List[str] = []
+
+    def add_unique(items: List[str], value: str) -> None:
+        if value not in items:
+            items.append(value)
 
     # 1. Process Symptoms
     for sym in patient_input.symptoms:
         normalized = normalize_term(sym)
-        resolved_symptoms.add(normalized)
+        add_unique(resolved_symptoms, normalized)
         
         # If medspacy is available, analyze for deeper clinical entities or modifiers (like negation)
         if nlp:
             doc = nlp(sym)
             for ent in doc.ents:
                 # Resolve extracted entity label
-                resolved_symptoms.add(normalize_term(ent.text))
+                add_unique(resolved_symptoms, normalize_term(ent.text))
                 
     # 2. Process Medications
     for med in patient_input.medications:
         normalized = normalize_term(med)
-        resolved_medications.add(normalized)
+        add_unique(resolved_medications, normalized)
         
         if nlp:
             doc = nlp(med)
             for ent in doc.ents:
-                resolved_medications.add(normalize_term(ent.text))
+                add_unique(resolved_medications, normalize_term(ent.text))
 
     # Update patient input structure with resolved/normalized values
     patient_input.symptoms = list(resolved_symptoms)

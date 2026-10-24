@@ -70,7 +70,7 @@ class Neo4jClient:
         if self.use_mock:
             logger.info(f"Querying MOCK drug interactions for: {medications} under context doctor_id: {doctor_id}")
             results = []
-            meds_set = {m.lower() for m in medications}
+            meds_set = {str(m).strip().lower() for m in medications if str(m).strip()}
             for interaction in MOCK_INTERACTIONS:
                 dr1 = interaction["dr1.name"].lower()
                 dr2 = interaction["dr2.name"].lower()
@@ -90,13 +90,18 @@ class Neo4jClient:
         logger.info(f"Querying live Neo4j drug interactions for: {medications} under context doctor_id: {doctor_id}")
         query = """
             MATCH (dr1:Drug)-[r:INTERACTS_WITH]->(dr2:Drug)
-            WHERE dr1.name IN $meds AND dr2.name IN $meds
-              AND (r.scope = "global" OR (r.scope = "private" AND r.doctor_id = $doctor_id))
+            WHERE toLower(dr1.name) IN $meds AND toLower(dr2.name) IN $meds
+              AND (r.scope = "global" OR (r.scope IS NULL AND r.doctor_id IS NULL)
+                   OR (r.scope = "private" AND r.doctor_id = $doctor_id))
             RETURN dr1.name AS dr1, dr2.name AS dr2, r.severity AS severity, r.effect AS effect
         """
         try:
             with self.driver.session() as session:
-                result = session.run(query, meds=medications, doctor_id=doctor_id)
+                result = session.run(
+                    query,
+                    meds=[str(m).strip().lower() for m in medications if str(m).strip()],
+                    doctor_id=doctor_id,
+                )
                 return [dict(r) for r in result]
         except Exception as e:
             logger.error(f"Live Neo4j query error: {e}. Returning empty list.")
@@ -107,7 +112,7 @@ class Neo4jClient:
         if self.use_mock:
             logger.info(f"Querying MOCK symptom-disease mappings for: {symptoms}")
             disease_scores = {}
-            symptom_set = {s.lower() for s in symptoms}
+            symptom_set = {s.strip().lower() for s in symptoms}
             
             for indication in MOCK_INDICATIONS:
                 s_name = indication["s.name"].lower()
@@ -124,13 +129,16 @@ class Neo4jClient:
         logger.info(f"Querying live Neo4j symptom-disease mappings for: {symptoms}")
         query = """
             MATCH (s:Symptom)-[r:INDICATES]->(d:Disease)
-            WHERE s.name IN $symptoms
+            WHERE toLower(s.name) IN $symptoms
             RETURN d.name AS name, sum(r.weight) AS score
             ORDER BY score DESC LIMIT 5
         """
         try:
             with self.driver.session() as session:
-                result = session.run(query, symptoms=symptoms)
+                result = session.run(
+                    query,
+                    symptoms=[str(s).strip().lower() for s in symptoms if str(s).strip()],
+                )
                 return [dict(r) for r in result]
         except Exception as e:
             logger.error(f"Live Neo4j query error: {e}. Returning empty list.")

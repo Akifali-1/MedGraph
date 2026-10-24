@@ -159,7 +159,7 @@ docker-compose up --build
 
 The repository includes a GitHub Actions configuration under `.github/workflows/ci.yml`. On every push or pull request to `main` and `dev`, the workflow:
 1. Installs Python dependencies and runs the offline CDSS integration tests:
-   ```bash
+  ```bash
    python backend/tests/test_flow.py
    ```
 2. Installs Node.js dependencies and verifies the frontend production build:

@@ -1,5 +1,9 @@
 # MedGraph AI AWS Teardown Script
-# Stops the SageMaker GPU endpoint and scales down ECS/ALB resources to save costs, while preserving S3 and ECR assets.
+# Scales down ECS/ALB resources to save costs, while preserving S3 and ECR assets.
+
+param(
+    [switch]$StopSageMaker
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -7,12 +11,16 @@ Write-Host "=======================================================" -Foreground
 Write-Host "             MEDGRAPH AI TEARDOWN AGENT                " -ForegroundColor Yellow
 Write-Host "=======================================================" -ForegroundColor Yellow
 
-# 1. Stop SageMaker GPU Endpoint
-Write-Host "`n[1/2] Stopping SageMaker GPU Endpoint..." -ForegroundColor Cyan
-if (Test-Path ".venv\Scripts\python.exe") {
-    & .venv\Scripts\python.exe fine_tuning/manage_sagemaker.py stop
+# 1. Stop SageMaker only when explicitly requested.
+if ($StopSageMaker) {
+    Write-Host "`n[1/2] Stopping SageMaker GPU Endpoint..." -ForegroundColor Cyan
+    if (Test-Path ".venv\Scripts\python.exe") {
+        & .venv\Scripts\python.exe fine_tuning/manage_sagemaker.py stop
+    } else {
+        python fine_tuning/manage_sagemaker.py stop
+    }
 } else {
-    python fine_tuning/manage_sagemaker.py stop
+    Write-Host "`n[1/2] SageMaker stop skipped; no endpoint is configured by default." -ForegroundColor Yellow
 }
 
 # 2. Scale down ECS and ALB backend resources via Terraform

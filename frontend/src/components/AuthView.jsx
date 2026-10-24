@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   Stethoscope, 
   Mail, 
@@ -27,7 +26,6 @@ export default function AuthView({
   handleLoginSubmit,
   handleSignupSubmit,
   authError,
-  handleGoogleLogin,
   isGoogleSsoConfigured = false
 }) {
   return (
@@ -70,7 +68,7 @@ export default function AuthView({
             onClick={() => setRole('doctor')}
             style={{ fontSize: '12.5px', padding: '10px 14px' }}
           >
-            Medical Practitioner
+            Practitioner
           </button>
                     <button 
             type="button"
@@ -108,13 +106,13 @@ export default function AuthView({
           </div>
           <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text-contrast)' }}>
             {role === 'doctor' 
-              ? (authMode === 'login' ? 'Clinician Gateway' : 'Practitioner Onboarding')
-              : (authMode === 'login' ? 'Patient Portal' : 'Patient Account Setup')}
+              ? (authMode === 'login' ? 'Practitioner sign in' : 'Create practitioner account')
+              : (authMode === 'login' ? 'Patient sign in' : 'Create patient account')}
           </h2>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: '1.4' }}>
             {role === 'doctor'
-              ? (authMode === 'login' ? 'Access clinical decision workspace.' : 'Register practitioner credentials.')
-              : (authMode === 'login' ? 'Review custom prescription safety reports.' : 'Setup account to log prescriptions.')
+              ? (authMode === 'login' ? 'Open the case workspace.' : 'Create your practitioner account.')
+              : (authMode === 'login' ? 'Review your medicine safety checks.' : 'Create an account to save checks.')
             }
           </p>
         </div>
@@ -129,7 +127,7 @@ export default function AuthView({
         {authMode === 'login' ? (
           <form onSubmit={handleLoginSubmit}>
             <div className="form-group">
-              <label className="form-label">{role === 'doctor' ? 'Clinician Email' : 'Patient ID / Email'}</label>
+               <label className="form-label">Email</label>
               <div style={{ position: 'relative' }}>
                 <Mail size={16} style={{ position: 'absolute', left: '14px', top: '14px', color: 'var(--text-muted)' }} />
                 <input 
@@ -145,7 +143,7 @@ export default function AuthView({
             </div>
 
             <div className="form-group">
-              <label className="form-label">Secure Password</label>
+              <label className="form-label">Password</label>
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: '14px', top: '14px', color: 'var(--text-muted)' }} />
                 <input 
@@ -163,12 +161,12 @@ export default function AuthView({
             {role === 'doctor' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.15)', borderRadius: '8px', marginBottom: '20px' }}>
                 <ShieldAlert size={14} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Demo account: use e.carter@medgraph.ai with password "password".</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Password sign-in is for local development.</span>
               </div>
             )}
 
             <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
-              Verify & Launch Console
+              Sign in
               <ArrowRight size={15} />
             </button>
 
@@ -180,44 +178,38 @@ export default function AuthView({
             </div>
 
             {isGoogleSsoConfigured ? (
-              <div id="google-sso-button" style={{ display: 'flex', justifyContent: 'center', width: '100%', minHeight: '40px' }}></div>
+              <div id="google-sso-button" style={{ width: '100%', minHeight: '40px', display: 'flex', justifyContent: 'center' }} />
             ) : (
-              <button 
-                type="button" 
-                className="btn btn-secondary" 
-                onClick={() => handleGoogleLogin(role)}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px' }}
               >
-                <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}>
-                  <path fill="#4285F4" d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.47h4.84c-.21 1.12-.84 2.07-1.79 2.7v2.24h2.9c1.7-1.57 2.69-3.88 2.69-6.57z"/>
-                  <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.24c-.8.54-1.83.86-3.06.86-2.35 0-4.34-1.58-5.05-3.71H.95v2.3A9 9 0 0 0 9 18z"/>
-                  <path fill="#FBBC05" d="M3.95 10.73A5.4 5.4 0 0 1 3.6 9c0-.6.1-1.2.29-1.77V4.93H.95A9 9 0 0 0 0 9c0 1.45.35 2.82.95 4.07l3-2.34z"/>
-                  <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.8 11.43 0 9 0 5.48 0 2.44 2.02.95 4.93l3 2.34C4.66 5.16 6.65 3.58 9 3.58z"/>
-                </svg>
-                Continue with Google
+                Google sign-in unavailable
               </button>
             )}
 
             <p style={{ textAlign: 'center', fontSize: '13px', color: 'var(--text-secondary)', marginTop: '24px' }}>
-              First time on the platform?{' '}
+              New here?{' '}
               <span 
                 style={{ color: role === 'doctor' ? 'var(--accent-cyan)' : 'var(--accent-purple)', cursor: 'pointer', fontWeight: '600' }}
                 onClick={() => setAuthMode('signup')}
               >
-                {role === 'doctor' ? 'Register Practitioner' : 'Create Patient Account'}
+                {role === 'doctor' ? 'Create account' : 'Create patient account'}
               </span>
             </p>
           </form>
         ) : (
           <form onSubmit={handleSignupSubmit}>
             <div className="form-group">
-              <label className="form-label">{role === 'doctor' ? 'Full Name & MD Title' : 'Full Name'}</label>
+              <label className="form-label">Full name</label>
               <div style={{ position: 'relative' }}>
                 <User size={16} style={{ position: 'absolute', left: '14px', top: '14px', color: 'var(--text-muted)' }} />
                 <input 
                   type="text" 
                   className="form-input" 
-                  placeholder={role === 'doctor' ? "Dr. Evelyn Carter, MD" : "Arthur Pendelton"} 
+                  placeholder={role === 'doctor' ? "Dr. Evelyn Carter, MD" : "Your full name"} 
                   value={nameInput}
                   onChange={(e) => setNameInput(e.target.value)}
                   required 
@@ -229,7 +221,7 @@ export default function AuthView({
             {role === 'doctor' ? (
               <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label className="form-label">NPI Registry ID</label>
+                   <label className="form-label">NPI</label>
                   <input 
                     type="text" 
                     className="form-input" 
@@ -240,7 +232,7 @@ export default function AuthView({
                   />
                 </div>
                 <div>
-                  <label className="form-label">Attending Clinic</label>
+                   <label className="form-label">Clinic</label>
                   <input 
                     type="text" 
                     className="form-input" 
@@ -298,21 +290,15 @@ export default function AuthView({
             </div>
 
             {isGoogleSsoConfigured ? (
-              <div id="google-sso-button" style={{ display: 'flex', justifyContent: 'center', width: '100%', minHeight: '40px' }}></div>
+              <div id="google-sso-button" style={{ width: '100%', minHeight: '40px', display: 'flex', justifyContent: 'center' }} />
             ) : (
-              <button 
-                type="button" 
-                className="btn btn-secondary" 
-                onClick={() => handleGoogleLogin(role)}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px' }}
               >
-                <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}>
-                  <path fill="#4285F4" d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.47h4.84c-.21 1.12-.84 2.07-1.79 2.7v2.24h2.9c1.7-1.57 2.69-3.88 2.69-6.57z"/>
-                  <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.24c-.8.54-1.83.86-3.06.86-2.35 0-4.34-1.58-5.05-3.71H.95v2.3A9 9 0 0 0 9 18z"/>
-                  <path fill="#FBBC05" d="M3.95 10.73A5.4 5.4 0 0 1 3.6 9c0-.6.1-1.2.29-1.77V4.93H.95A9 9 0 0 0 0 9c0 1.45.35 2.82.95 4.07l3-2.34z"/>
-                  <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.8 11.43 0 9 0 5.48 0 2.44 2.02.95 4.93l3 2.34C4.66 5.16 6.65 3.58 9 3.58z"/>
-                </svg>
-                Continue with Google
+                Google sign-in unavailable
               </button>
             )}
 

@@ -96,6 +96,7 @@ class AgentState(TypedDict):
     final_output: Optional[Dict[str, Any]]
     citation_warnings_present: bool
     data_mode: str
+    reasoning_engine: str
 
 # Node 1: Intake and Entity Resolution
 def intake_node(state: AgentState) -> Dict[str, Any]:
@@ -120,7 +121,8 @@ def intake_node(state: AgentState) -> Dict[str, Any]:
         "confidence": 0.0,
         "drug_interaction_flag": False,
         "citation_warnings_present": False
-        ,"data_mode": "live"
+        ,"data_mode": "live",
+        "reasoning_engine": "none"
     }
 
 # Node 2: RAG Agent
@@ -278,7 +280,8 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
                 "diagnoses": data.get("diagnoses", []),
                 "confidence": data.get("top_confidence", 0.0),
                 "query_refinement": data.get("query_refinement", ""),
-                "final_output": data
+                "final_output": data,
+                "reasoning_engine": "none"
             }
         except Exception as e:
             log.error("reasoning_node_sagemaker_failed", request_id=request_id, error=str(e))
@@ -305,7 +308,8 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
                 "diagnoses": data.get("diagnoses", []),
                 "confidence": data.get("top_confidence", 0.0),
                 "query_refinement": data.get("query_refinement", ""),
-                "final_output": data
+                "final_output": data,
+                "reasoning_engine": "gemini"
             }
         except Exception as e:
             log.error("reasoning_node_gemini_failed", request_id=request_id, error=str(e))
@@ -332,21 +336,20 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
                 "diagnoses": data.get("diagnoses", []),
                 "confidence": data.get("top_confidence", 0.0),
                 "query_refinement": data.get("query_refinement", ""),
-                "final_output": data
+                "final_output": data,
+                "reasoning_engine": "none"
             }
         except Exception as e:
             log.error("reasoning_node_openai_failed", request_id=request_id, error=str(e))
             
-    # Mock LLM reasoning fallback (extremely robust for offline portfolio demos)
-    demo_mode = (
-        os.getenv("TESTING") == "true" or os.getenv("CI") == "true"
-        or os.getenv("MEDGRAPH_DEMO_MODE", "false").lower() == "true"
-    )
+    # Mock reasoning is available only through the explicit demo switch.
+    demo_mode = os.getenv("MEDGRAPH_DEMO_MODE", "false").lower() == "true"
     if not demo_mode:
-        data = {"diagnoses": [], "recommended_workup": [], "status": "unavailable",
+        data = {"diagnoses": [], "recommended_workup": [], "status": "error",
                 "message": "The clinical reasoning service is unavailable. Please try again."}
         return {"diagnoses": [], "confidence": 0.0,
-                "query_refinement": "", "final_output": data}
+                "query_refinement": "", "final_output": data,
+                "reasoning_engine": "none"}
     log.info("reasoning_node_using_mock_fallback", request_id=request_id)
     symptom_set = {s.lower() for s in patient["symptoms"]}
     med_set = {m.lower() for m in patient["medications"]}
@@ -433,7 +436,8 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
         "diagnoses": diagnoses,
         "confidence": top_conf,
         "query_refinement": refinement,
-        "final_output": mock_res
+        "final_output": mock_res,
+        "reasoning_engine": "mock"
     }
 
 # Node 6: Veracity Checker Node
@@ -481,7 +485,8 @@ def output_node(state: AgentState) -> Dict[str, Any]:
         "interaction_check": _interaction_contract(graph_res),
         "status": status,
         "message": message,
-        "data_mode": state.get("data_mode", "live")
+        "data_mode": state.get("data_mode", "live"),
+        "reasoning_engine": state.get("reasoning_engine", "none")
     }
     
     log.info("output_node_completed", request_id=request_id)
@@ -527,7 +532,8 @@ def alert_node(state: AgentState) -> Dict[str, Any]:
         "critical_flag": True,
         "status": status,
         "message": message,
-        "data_mode": state.get("data_mode", "live")
+        "data_mode": state.get("data_mode", "live"),
+        "reasoning_engine": state.get("reasoning_engine", "none")
     }
     
     log.info("alert_node_completed", request_id=request_id)

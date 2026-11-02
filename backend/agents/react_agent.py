@@ -629,6 +629,7 @@ def simulate_react_flow(state: ReActState) -> Dict[str, Any]:
         "interaction_check": _interaction_contract(state["initial_ddi"]),
         "status": status,
         "message": message,
+        "reasoning_engine": "mock",
     }
 
 def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines: List[str], request_id: str, doctor_id: Optional[str] = None) -> Dict[str, Any]:
@@ -652,6 +653,7 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
             "citations": [], "retrieved_sources": [],
             "interaction_check": _interaction_contract(initial_ddi),
             "status": "no_evidence", "message": NO_RAG_RESULTS_MESSAGE,
+            "reasoning_engine": "none",
             "rag_status": "no_results", "rag_message": NO_RAG_RESULTS_MESSAGE,
             "fallbacks_active": {"llm": False, "neo4j": neo4j_fallback},
         }
@@ -775,6 +777,7 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
             "interaction_check": _interaction_contract(initial_ddi),
             "status": status,
             "message": message,
+            "reasoning_engine": "gemini",
             "fallbacks_active": {
                 "llm": False,
                 "neo4j": neo4j_fallback
@@ -812,6 +815,7 @@ def _unavailable_response(initial_ddi: dict, guidelines: List[Any], neo4j_fallba
         "interaction_check": _interaction_contract(initial_ddi),
         "status": status,
         "message": message,
+        "reasoning_engine": "none",
         "rag_status": "found" if guidelines else "no_results",
         "rag_message": None if guidelines else NO_RAG_RESULTS_MESSAGE,
         "fallbacks_active": {"llm": False, "neo4j": neo4j_fallback},

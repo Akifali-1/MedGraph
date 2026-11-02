@@ -118,7 +118,8 @@ def diagnose_patient(patient: PatientInput, request_id: Optional[str] = None, do
         "query_refinement": "",
         "final_output": None,
         "citation_warnings_present": False,
-        "data_mode": "live"
+        "data_mode": "live",
+        "reasoning_engine": "none"
     }
     
     # Run the graph

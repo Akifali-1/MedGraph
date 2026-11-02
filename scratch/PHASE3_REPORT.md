@@ -50,4 +50,21 @@ Working directory: `C:\PROJECTS\Medgraph\medgraph`
 
 ## Phase A
 
-Entries will be added as each step completes.
+### A1 — reasoning engine contract
+
+- Result: **PASS**. `/diagnose` now returns `reasoning_engine` with values `gemini`, `mock`, or `none`. The DAG records the selected engine; the ReAct response paths also expose it.
+
+### A2 — no implicit mock diagnoses
+
+- Command: `.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase3_reasoning.py::test_mock_reasoning_is_not_used_without_explicit_demo_mode -q`
+- Result: **PASS**. With `MEDGRAPH_DEMO_MODE` unset and provider keys unavailable, reasoning returns `reasoning_engine="none"`, `status="error"`, and `diagnoses=[]`. The test is independent of live services.
+- Existing offline flow tests now set explicit `MEDGRAPH_DEMO_MODE=true`; mock diagnoses are labeled by the engine contract rather than inferred from `TESTING=true`.
+
+### A3 — Gemini failure behavior
+
+- Command: `.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase3_reasoning.py::test_gemini_failure_returns_error_without_mock_diagnoses -q`
+- Result: **PASS**. A test-process-only invalid key and simulated Gemini failure return HTTP `200` with `status="error"`, the plain message `The clinical reasoning service is unavailable. Please try again.`, `reasoning_engine="none"`, and `diagnoses=[]`. No key value was committed or printed.
+
+### A4 — live cardiac vignette
+
+- Pending after the live backend verification run. Expected engine is `gemini`; the actual response and citation IDs will be recorded here.

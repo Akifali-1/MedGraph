@@ -101,6 +101,10 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - Unreachable dependency health: HTTP `503`; `status="unhealthy"`; Neo4j and Redis were reported `unhealthy`; Pinecone was inspected without index creation; SageMaker was `not_configured`.
 - Sanitized full response bodies were written to ignored `scratch/phase6_responses.json`. All processes started for this verification were stopped; ports 8000, 5173, 8010, 8011, and 8012 were free after the run.
 
+## Phase 7 / README
+
+- Updated `README.md` to describe the implemented Gemini-default/SageMaker-optional path, explicit mock behavior, evaluation links, data-source documentation, and measured/blocked evaluation status.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

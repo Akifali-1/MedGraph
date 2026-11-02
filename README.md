@@ -1,6 +1,6 @@
 # MedGraph AI — Clinical Decision Support System (CDSS)
 
-MedGraph AI is a portfolio-grade Clinical Decision Support System (CDSS) prototype, built on a production-oriented architecture, that unifies structured biomedical knowledge graphs with dense vector guideline indexes to enable explainable clinical reasoning. The system acts as an auditable co-pilot for healthcare practitioners by querying standard drug-drug interactions (Neo4j) and clinical practice guidelines (Pinecone RAG) to generate grounded diagnostic assessments using fine-tuned generative LLMs (AWS SageMaker).
+MedGraph AI is a research and demonstration Clinical Decision Support System (CDSS) prototype. It combines a Neo4j knowledge graph with indexed guideline retrieval and returns source metadata with its result. Gemini is the default reasoning model when configured; SageMaker is optional and is used only when `SAGEMAKER_ENDPOINT_NAME` is set.
 
 > **Note:** This is a demonstration prototype for research and portfolio purposes — not a certified medical device. See the [Disclaimer](#️-disclaimer) below.
 
@@ -34,7 +34,7 @@ MedGraph AI operates on a Dual-System architecture that prioritizes safety, cita
                                                  |
                                                  v
                                     LLM Reasoning Engine
-                             (SageMaker Gemma-2 / Gemini Flash)
+                              (Gemini / optional SageMaker)
                                                  |
                                                  v
                                      Citation Veracity Check
@@ -52,11 +52,11 @@ MedGraph AI operates on a Dual-System architecture that prioritizes safety, cita
 | **Frontend** | React, Vite, Tailwind CSS, Lucide | Telemetry-driven workspace dashboard |
 | **Backend** | FastAPI, Uvicorn, Pydantic | Asynchronous, rate-limited clinical gateway API |
 | **Caching** | Redis | MD5-hashed patient profiles cache fallback |
-| **Graph DB** | Neo4j community, Cypher | Seeding NIH RxNav & Columbia Symptom linkages |
+| **Graph DB** | Neo4j community, Cypher | Structured interaction and symptom lookups |
 | **Vector DB** | Pinecone serverless | Grounding guideline vector index search |
 | **Embeddings** | Google Gemini / OpenAI | Multi-stage chunk embeddings |
-| **ML Models** | Hugging Face PEFT, Gemma 2 | Fine-tuned USMLE diagnostic parameters |
-| **Deployment** | Docker, Docker Compose, AWS SageMaker | Portability and cloud-scalable inference |
+| **Reasoning** | Gemini by default; optional SageMaker | Response generation after retrieval |
+| **Deployment** | Docker, Docker Compose | Local containerized execution |
 
 ---
 
@@ -140,10 +140,9 @@ Key configuration parameters in `.env`:
 
 3. **(Optional) Seed Neo4j Knowledge Graph:**
    ```powershell
-   python backend/graph/seed.py
-   python backend/graph/seed_rxnav.py
+    python backend/graph/seed.py
    ```
-   *(Note: If Neo4j or Redis are not running, MedGraph automatically falls back to built-in in-memory graph & cache representations without crashing).*
+*(Note: Explicit `MOCK_NEO4J=true` and `MOCK_REDIS=true` enable local test/demo behavior. An unavailable live graph is reported as unavailable.)*
 
 ### Option B: Using Docker Compose
 This spins up Redis, Neo4j, the FastAPI backend, and the React frontend in containerized environments:
@@ -171,6 +170,8 @@ The repository includes a GitHub Actions configuration under `.github/workflows/
 
 ## 🧠 ML Fine-Tuning & SageMaker Deployment
 
+The optional fine-tuning and deployment scripts are not part of the default `/diagnose` path. The default path uses Gemini when configured; SageMaker is selected only when `SAGEMAKER_ENDPOINT_NAME` is set.
+
 ### 1. Kaggle USMLE Fine-Tuning
 The script `fine_tuning/fine_tune_medqa.py` is configured to run QLoRA parameter-efficient fine-tuning on **Gemma 2 2B / 9B** models using the USMLE US Medical licensing dataset (MedQA):
 1. Create a Kaggle notebook and attach a GPU (NVIDIA T4 or A100).
@@ -182,7 +183,17 @@ Deploy the merged weights using the SageMaker Hugging Face TGI (Text Generation 
 ```bash
 python fine_tuning/deploy_sagemaker.py
 ```
-This deploys the model on an `ml.g5.xlarge` instance (Ampere A10G GPU required for Gemma 2 sliding window attention support).
+This is an optional deployment workflow and was not used for the Phase 2 evidence work.
+
+---
+
+## 📊 Evaluation & data sources
+
+- [Latest evaluation summary](eval/results/2026-11-02/summary.md)
+- [Evaluation set and metric definitions](eval/README.md)
+- [Data sources, licenses, and access notes](docs/DATA_SOURCES.md)
+
+The latest run contains 20 provisional diagnosis cases and eight synthetic boundary controls. Diagnosis accuracy was not measured because the run used deterministic offline reasoning; interaction metrics were blocked while DDInter download/schema verification timed out. See the summary for the measured control and citation-resolution checks.
 
 ---
 

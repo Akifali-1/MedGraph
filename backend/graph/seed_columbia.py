@@ -116,7 +116,12 @@ def seed_columbia_dataset():
             # Yield associations for the previous disease
             if last_disease_cui and current_symptoms:
                 for s_idx, (s_cui, s_name) in enumerate(current_symptoms):
-                    # Decay weight based on rank ordering in dataset
+                    # The source exposes disease occurrence counts and ranked
+                    # symptoms, but not a numeric per-edge co-occurrence value.
+                    # Keep this explicitly heuristic rather than calling it a
+                    # measured co-occurrence weight.
+                    # Source: Columbia Disease-Symptom Knowledge Database.
+                    # Formula: rank heuristic, floor 0.50.
                     weight = max(0.50, round(0.95 - 0.04 * s_idx, 3))
                     associations.append({
                         "disease_id": last_disease_cui,
@@ -141,6 +146,8 @@ def seed_columbia_dataset():
     # Seed the final disease
     if last_disease_cui and current_symptoms:
         for s_idx, (s_cui, s_name) in enumerate(current_symptoms):
+            # Heuristic rank score; the published count is disease occurrence,
+            # not a symptom-edge co-occurrence count.
             weight = max(0.50, round(0.95 - 0.04 * s_idx, 3))
             associations.append({
                 "disease_id": last_disease_cui,

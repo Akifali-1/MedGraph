@@ -68,6 +68,16 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - Critical alert text is built from the returned interaction pair/effect/severity rather than a fixed drug pair.
 - Added regression tests in `backend/tests/test_phase2_contract.py`; focused suite: **13 passed**, 1 dependency deprecation warning.
 
+## Phase 3 — evaluation run
+
+- Added `eval/run_eval.py`. It starts uvicorn on localhost, uses the default `/diagnose` DAG route, sends sequential requests, retries HTTP 429 responses up to three times, paces requests below eight per minute, writes raw JSONL, and terminates the server it started.
+- The live Gemini-dependent run was not used for accuracy claims because Gemini was blocked by provider/API failures. An explicit offline HTTP run was completed to validate response shape and the control boundary; it used `TESTING=true`, explicit mock flags, and **0 Gemini calls**.
+- Raw output: `eval/results/2026-11-02/results.jsonl`; summary: `eval/results/2026-11-02/summary.json` and `summary.md`.
+- Eval sizes: 20 diagnosis cases (all provisional; underpowered versus target 40), 8 synthetic controls, 0 interaction cases because the interaction phase is blocked.
+- Measured offline boundary results: controls `8/8` returned `no_evidence`; citation ID resolution `37/37`. These are not clinical accuracy metrics.
+- Diagnosis top-1/top-3 accuracy: **not measured** because deterministic offline reasoning is not a clinical accuracy measurement. Interaction precision/recall and brand/synonym mapping: **BLOCKED**.
+- Offline diagnosis latency: p50 `36.98 ms`, p95 `106.21 ms`; Gemini calls `0`; errors `0`. No secret values or secret variable names appeared in raw results.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

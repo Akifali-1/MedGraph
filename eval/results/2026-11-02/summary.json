@@ -1,0 +1,44 @@
+{
+  "brand_synonym_mapping": {
+    "correct": 0,
+    "status": "blocked",
+    "total": 0
+  },
+  "citation_resolution": {
+    "note": "deterministic ID-set resolution; does not verify the cited claim",
+    "rate": 1.0,
+    "resolved": 37,
+    "total": 37
+  },
+  "controls": {
+    "n": 8,
+    "no_evidence": 8,
+    "rate": 1.0
+  },
+  "diagnosis_cases": 20,
+  "diagnosis_cases_evaluated": 20,
+  "diagnosis_latency_ms": {
+    "p50": 36.98,
+    "p95": 106.21
+  },
+  "diagnosis_metric": {
+    "reason": "offline deterministic reasoning was used; it is not a clinical accuracy measurement",
+    "status": "not_measured"
+  },
+  "errors": {
+    "count": 0,
+    "reasons": []
+  },
+  "gemini_calls_used": 0,
+  "interactions": {
+    "reason": "DDInter source download and schema verification timed out; no labels were invented",
+    "status": "blocked"
+  },
+  "provenance": {
+    "diagnosis_set_underpowered": true,
+    "label_status": "provisional",
+    "live_gemini_metrics": "not measured",
+    "synthetic_controls": true
+  },
+  "run_mode": "offline"
+}

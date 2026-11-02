@@ -129,3 +129,24 @@ The dense retrieval initialization was changed to open the existing Pinecone ind
 - Command: `Get-ChildItem scratch/data` / recursive file check.
 - Result: **BLOCKED**. No DDInter CSV is present under `scratch/data/`; therefore no file metadata, schema, hash, Neo4j mutation, interaction-case generation, or direct interaction metric run was performed.
 - No files were moved. No Neo4j writes, deletes, or Pinecone writes/deletes were performed.
+
+## Phase E — demo-data labeling
+
+### E1–E2
+
+- Result: **PASS**. Non-DDInter graph interactions now carry `data_source="synthetic-demo"`; live edges are labeled `DDInter 2.0` only when their graph source explicitly matches that value.
+- Critical alert text includes the interaction data source, so synthetic-demo alerts identify their provenance.
+- Tests: `.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase3_data_source.py -q` — **PASS**, 2 tests.
+
+### E3
+
+- Result: **PASS**. README and About page now state the current interaction source as `synthetic-demo`, with DDInter 2.0 license and blocked availability documented.
+
+## Phase F — docs and results
+
+### F1–F4
+
+- Command: `.\.venv\Scripts\python.exe scripts/sync_eval_to_about.py`.
+- Result: **PASS**. About data changed from offline summary `eval/results/2026-11-02/summary.json` to live summary `eval/results/2026-11-03-live/summary.json`. Diff records live `0/4` top-1/top-3, Wilson interval `[0.0, 0.4899]`, p50 `1829.83 ms`, p95 `2611.97 ms`, 5 errors, and blocked interaction metrics.
+- `eval/review/review_sample.csv` was not changed.
+- Edited-file scan for prohibited phrases: **PASS**; no `zero-hallucination` or `production-ready` text was added.

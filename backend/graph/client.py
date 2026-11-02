@@ -90,7 +90,8 @@ class Neo4jClient:
                             "dr1": interaction["dr1.name"],
                             "dr2": interaction["dr2.name"],
                             "severity": interaction["r.severity"],
-                            "effect": interaction["r.effect"]
+                            "effect": interaction["r.effect"],
+                            "data_source": "synthetic-demo",
                         })
             return results
 
@@ -105,7 +106,8 @@ class Neo4jClient:
             WHERE toLower(dr1.name) IN $meds AND toLower(dr2.name) IN $meds
               AND (r.scope = "global" OR (r.scope IS NULL AND r.doctor_id IS NULL)
                    OR (r.scope = "private" AND r.doctor_id = $doctor_id))
-            RETURN dr1.name AS dr1, dr2.name AS dr2, r.severity AS severity, r.effect AS effect
+            RETURN dr1.name AS dr1, dr2.name AS dr2, r.severity AS severity, r.effect AS effect,
+                   r.source AS source, r.source_version AS source_version
         """
         try:
             with self.driver.session() as session:
@@ -114,7 +116,14 @@ class Neo4jClient:
                     meds=[str(m).strip().lower() for m in medications if str(m).strip()],
                     doctor_id=doctor_id,
                 )
-                return [dict(r) for r in result]
+                interactions = []
+                for row in result:
+                    item = dict(row)
+                    item["data_source"] = (
+                        "DDInter 2.0" if item.get("source") == "DDInter 2.0" else "synthetic-demo"
+                    )
+                    interactions.append(item)
+                return interactions
         except Exception as e:
             logger.error(f"Live Neo4j query error: {e}. Returning empty list.")
             return []

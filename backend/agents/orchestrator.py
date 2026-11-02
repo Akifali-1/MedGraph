@@ -527,6 +527,7 @@ def alert_node(state: AgentState) -> Dict[str, Any]:
     interaction_text = "; ".join(
         f"{item.get('dr1', 'Unknown drug')} + {item.get('dr2', 'Unknown drug')}: "
         f"{item.get('effect', 'interaction reported')} (severity: {item.get('severity', 'unspecified')})"
+        f" [{item.get('data_source', 'synthetic-demo')}]"
         for item in interactions
     )
     citations = _build_citations(state.get("rag_chunks", []))

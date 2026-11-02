@@ -123,6 +123,7 @@ def sanitize_result(case: dict[str, Any], status_code: int, result: dict[str, An
         "kind": "diagnosis" if case["id"].startswith("dx-") else "control",
         "status_code": status_code,
         "status": result.get("status"),
+        "reasoning_engine": result.get("reasoning_engine", "none"),
         "message": result.get("message"),
         "diagnoses": result.get("diagnoses", []),
         "interaction_check": result.get("interaction_check"),

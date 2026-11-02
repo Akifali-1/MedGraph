@@ -120,6 +120,7 @@ The dense retrieval initialization was changed to open the existing Pinecone ind
 - Live controls were not included in the diagnosis-only run. The live retriever control boundary from B2 was `3/8` no-evidence (`37.5%`), with five controls retrieving above threshold.
 - Citation resolution in live raw results: `12/12`; this checks ID resolution only, not claim validity.
 - Live summary: `eval/results/2026-11-03-live/summary.md` and `summary.json`. The prior offline results remain separately labeled under `eval/results/2026-11-02/`.
+- Live diagnosis evaluator reasoning engines: all 9 attempted cases recorded `reasoning_engine="none"` (four no-evidence responses and five reasoning-service errors); no live diagnosis case completed with Gemini output before the stop rule.
 - Gemini call count: **not measured**. Interaction metrics and brand/synonym mapping remain **BLOCKED** because DDInter data is unavailable.
 
 ## Phase D — real interaction data

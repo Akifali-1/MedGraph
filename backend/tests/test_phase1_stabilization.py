@@ -62,3 +62,34 @@ def test_health_reports_unreachable_dependencies_and_does_not_create_pinecone(mo
     assert data["dependencies"]["redis"].startswith("unhealthy:")
     assert data["dependencies"]["pinecone"] == "unhealthy: Pinecone unavailable"
     assert calls == [False]
+
+
+def test_diagnosis_marks_interaction_check_unavailable(monkeypatch):
+    import backend.config.singletons as singletons
+    from backend.agents.cache import diagnose_patient
+    from backend.models.patient import PatientInput
+
+    monkeypatch.setattr(
+        singletons,
+        "get_neo4j_client",
+        lambda: type(
+            "UnavailableNeo4j",
+            (),
+            {"available": False, "use_mock": False, "error": "connection refused"},
+        )(),
+    )
+
+    result = diagnose_patient(
+        PatientInput(
+            age=41,
+            sex="F",
+            symptoms=["unmapped phase1 symptom"],
+            medications=[],
+            comorbidities=[],
+        ),
+        request_id="phase1-unavailable-interaction",
+        doctor_id="phase1-test",
+    )
+
+    assert result["interaction_check"] == "unavailable"
+    assert result["drug_interactions"] == []

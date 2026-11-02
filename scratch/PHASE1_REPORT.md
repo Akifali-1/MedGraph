@@ -71,6 +71,13 @@ Entries will be added after each item with the change, command, result, and rema
 - `.venv/Scripts/python.exe -m pytest backend/tests/test_phase1_stabilization.py -q` — **PASS**, 2 passed.
 - Remaining: the live environment has a reachable seeded Neo4j, but local Redis availability and Gemini/Pinecone credential behavior remain environment-dependent.
 
+### Work item 4 — unavailable interaction status
+
+- Added `interaction_check` and `graph_check` to graph results. A live graph failure now returns `interaction_check: "unavailable"` instead of an ambiguous empty interaction list.
+- DAG output carries `interaction_check` through to the API response.
+- `.venv/Scripts/python.exe -m pytest backend/tests/test_phase1_stabilization.py::test_diagnosis_marks_interaction_check_unavailable -q` — **PASS**, 1 passed using a mocked unavailable Neo4j client.
+- Remaining: the response intentionally retains `drug_interactions: []` for schema compatibility; clients must use `interaction_check` to distinguish unavailable from no interactions.
+
 ## Decisions
 
 - The DAG is the sole default `/diagnose` path; ReAct remains available only by explicit `mode=react`.

@@ -85,6 +85,12 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - Empty evidence, graph-unavailable, and interaction states use the backend status contract. Critical alert text is built from returned interactions in both practitioner and patient views.
 - Frontend checks after this change: `npm run build` — **PASS**; `npm run lint` — **PASS**.
 
+## Phase 5 — honest About page
+
+- Updated the existing `#about` route with implemented pipeline behavior, Gemini/SageMaker selection rules, no-evidence behavior, graph interaction status, source licenses/access notes, evaluation status, limitations, and a not-medical-advice statement.
+- Added `scripts/sync_eval_to_about.py` and ran it. It copied `eval/results/2026-11-02/summary.json` to `frontend/src/data/latest_eval_summary.json`.
+- About-page data is generated from the latest committed evaluation summary; blocked and not-measured values remain labeled on the page.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

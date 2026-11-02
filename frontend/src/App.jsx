@@ -484,6 +484,7 @@ function App() {
 
   // RAG Source Grounding passages mapped from RAG hits
   const [ragPassages, setRagPassages] = useState([]);
+  const [expandedCitations, setExpandedCitations] = useState({});
 
   // Export summary modal
   const [showExportModal, setShowExportModal] = useState(false);
@@ -512,6 +513,7 @@ function App() {
     setResults(null);
     setError(null);
     setRagPassages([]);
+    setExpandedCitations({});
   }
 
   function clearAuthenticatedSession(navigateToAuth = false) {
@@ -589,8 +591,9 @@ function App() {
     setResults(item.results);
     setCheckedWorkups({});
     
-    // Load pre-populated RAG chunks for selected history item
-    updateRagEvidence(item.results, item.symptoms);
+    // History records can only show citations returned with that record.
+    setRagPassages(item.results?.citations || []);
+    setExpandedCitations({});
     
     // Switch to diagnostics tab
     setActiveTab('diagnostics');
@@ -616,6 +619,7 @@ function App() {
     setActiveHistoryId(null);
     setCheckedWorkups({});
     setRagPassages([]);
+    setExpandedCitations({});
   };
 
   // Mock logging function with timing
@@ -627,71 +631,6 @@ function App() {
         resolve();
       }, delay);
     });
-  };
-
-  // Populate dynamic reference grounding guidelines passages
-  const updateRagEvidence = (diagnosisOutput, symptomsList) => {
-    if (diagnosisOutput?.rag_status === 'no_results' || diagnosisOutput?.status === 'unavailable') {
-      setRagPassages([]);
-      return;
-    }
-    const isCardiac = symptomsList.some(s => s.toLowerCase().includes('chest') || s.toLowerCase().includes('jaw') || s.toLowerCase().includes('sweating') || s.toLowerCase().includes('pressure'));
-    const isNeuro = symptomsList.some(s => s.toLowerCase().includes('headache') || s.toLowerCase().includes('cephalalgia') || s.toLowerCase().includes('confusion'));
-    const hasDDI = diagnosisOutput?.requires_immediate_intervention || diagnosisOutput?.critical_flag || false;
-
-    let passages;
-
-    if (hasDDI) {
-      passages = [
-        {
-          title: "AHA/ACC Antithrombotic Guidelines — Section 10.4",
-          source: "Guideline 10 (Clinical Anticoagulation)",
-          match: "94.2% Similarity",
-          text: "Concurrent administration of oral anticoagulants (e.g., Warfarin) and antiplatelet therapy (e.g., Aspirin) increases the risk of bleeding synergistically. Dual therapy should only be maintained when clinical indications (e.g., mechanical heart valves, recent coronary stenting) outweigh verified bleeding score metrics, and requires close, continuous INR monitoring."
-        },
-        {
-          title: "DrugBank Reference Core Path — DDI-39201",
-          source: "DrugBank Database",
-          match: "99.1% Correlation",
-          text: "Warfarin and Aspirin co-administration. High Risk: The antiplatelet action of aspirin combined with the clotting factor synthesis inhibition of warfarin results in a profound compound bleed hazard. Recommended action: Evaluate target INR range and substitute non-interacting drugs if indicated."
-        }
-      ];
-    } else if (isCardiac) {
-      passages = [
-        {
-          title: "AHA/ACC Chest Pain Guidelines 2021 — Section 4.1.2 (Triage)",
-          source: "Practice Guideline",
-          match: "89.5% Similarity",
-          text: "For patients presenting with acute chest pain and potential ischemic symptoms (including radiation to the jaw, back, or neck, and accompanying diaphoresis), a 12-lead ECG must be obtained and interpreted within 10 minutes of clinical arrival. Serial cardiac troponins should be drawn to rule out myocardial infarction."
-        },
-        {
-          title: "AHA/ACC Guidelines 2022 — Aortic Dissection Rules",
-          source: "Clinical Guideline",
-          match: "87.0% Similarity",
-          text: "Geriatric patients with history of hypertension presenting with sudden, severe chest pain radiating to the jaw or back require prompt CT Angiography to rule out thoracic aortic dissection. Aortic dissection carries an hourly mortality rate of 1-2% if untreated."
-        }
-      ];
-    } else if (isNeuro) {
-      passages = [
-        {
-          title: "AHA/ASA Guidelines for the Management of Spontaneous Intracranial Hemorrhage",
-          source: "Guideline 11 (Neurology)",
-          match: "91.8% Similarity",
-          text: "Geriatric patients presenting with spontaneous onset headache (cephalalgia) and associated cognitive decline or confusion require immediate emergency non-contrast head CT scan to differentiate between intracranial hemorrhage and ischemic cerebrovascular accidents."
-        }
-      ];
-    } else {
-      passages = [
-        {
-          title: "Nonspecific Adult Chest Pain Pathways",
-          source: "Clinical Guideline",
-          match: "82.4% Similarity",
-          text: "For adult clinical presentations that do not meet high-risk cardiac or neurological guidelines, initial evaluation should include complete blood count (CBC) and basic metabolic panels (BMP) to establish baseline parameters, alongside observation."
-        }
-      ];
-    }
-
-    setRagPassages(passages);
   };
 
   // Primary trigger to invoke diagnostics
@@ -745,33 +684,21 @@ function App() {
     await addLog('Checking medicine links...', 'info', 300);
     await addLog('Looking for known medicine conflicts...', 'info', 200);
 
-    // Check drug interactions locally
-    const hasDDI = medications.some(m => m.toLowerCase().includes('warfarin')) && medications.some(m => m.toLowerCase().includes('aspirin'));
-    
-    if (hasDDI) {
-      await addLog('HIGH-RISK INTERACTION: Warfarin + Aspirin', 'danger', 400);
-      await addLog('Action: Safety alert triggered.', 'warning', 300);
-      setActiveNode('synthesis');
-    } else {
-      await addLog('No high-risk medicine conflict found.', 'success', 400);
-      
-      setActiveNode('rag');
-      await addLog('Finding relevant sources...', 'info', 400);
-      await addLog('Comparing exact and similar terms...', 'info', 300);
-      await addLog('Choosing the most useful references...', 'info', 300);
-      await addLog('Gathering source notes...', 'info', 300);
-      
-      setActiveNode('reasoning');
-      await addLog('Combining case details and sources...', 'info', 300);
-      await addLog('Building possible causes...', 'info', 450);
-      await addLog('Possible causes ready.', 'success', 400);
-      
-      setActiveNode('veracity');
-      await addLog('Checking citations...', 'info', 350);
-      await addLog('Sources checked.', 'success', 300);
-      
-      setActiveNode('synthesis');
-    }
+    await addLog(
+      medications.length > 1
+        ? 'Submitting medication list for structured interaction checking.'
+        : 'No medication pair supplied for interaction checking.',
+      'info',
+      350,
+    );
+    setActiveNode('rag');
+    await addLog('Finding relevant sources...', 'info', 400);
+    await addLog('Comparing retrieved terms...', 'info', 300);
+    setActiveNode('reasoning');
+    await addLog('Combining case details and returned sources...', 'info', 450);
+    setActiveNode('veracity');
+    await addLog('Checking citation links...', 'info', 350);
+    setActiveNode('synthesis');
 
     await addLog('Preparing case summary...', 'info', 300);
 
@@ -836,12 +763,15 @@ function App() {
       }
       diagnosticResult = data;
       setResults(data);
-      if (data.rag_status === 'no_results') {
-        await addLog(data.rag_message || 'No relevant clinical guideline evidence found.', 'warning', 250);
-      } else if (data.rag_status === 'found') {
-          await addLog('Sources found.', 'success', 250);
+      setRagPassages(data.citations || []);
+      setExpandedCitations({});
+      if (data.status === 'no_evidence') {
+        await addLog(data.message, 'warning', 250);
+      } else if (data.status === 'graph_unavailable') {
+        await addLog(data.message, 'warning', 250);
+      } else if ((data.citations || []).length > 0) {
+        await addLog('Sources returned.', 'success', 250);
       }
-      updateRagEvidence(data, resolvedSym);
       await addLog('Clinical analysis report compiled successfully. Rendering outputs.', 'success', 200);
     } catch (e) {
       const message = e?.name === 'AbortError'
@@ -853,8 +783,10 @@ function App() {
         status: 'unavailable', message,
         diagnoses: [], recommended_workup: [], drug_interactions: [],
         critical_flag: false, rag_status: 'unavailable', rag_message: message,
+        citations: [], retrieved_sources: [],
       });
-      updateRagEvidence({ diagnoses: [] }, resolvedSym);
+      setRagPassages([]);
+      setExpandedCitations({});
       await addLog(message, 'warning', 100);
     } finally {
       setIsDiagnosing(false);
@@ -946,9 +878,10 @@ function App() {
     report += `**Pre-existing Comorbidities:** ${comorbidities.length > 0 ? comorbidities.join(', ') : 'None'}\n\n`;
     report += `--- \n\n`;
     
-    if (results.requires_immediate_intervention || results.critical_flag) {
+    const interactions = results.interaction_check?.interactions || results.drug_interactions || [];
+    if (interactions.length > 0) {
       report += `### ⚠️ CRITICAL PHARMACOLOGICAL HAZARD ALERT\n`;
-      results.drug_interactions.forEach(i => {
+      interactions.forEach(i => {
         report += `- **${i.dr1} + ${i.dr2}:** ${i.effect} (Severity: ${i.severity})\n`;
       });
       report += `\n`;
@@ -989,20 +922,21 @@ function App() {
     report += `\n-----------------------------------\n`;
     report += `HEALTH SUMMARY & ADVICE:\n`;
     
-    const hasDDI = medications.some(m => m.toLowerCase().includes('warfarin')) && medications.some(m => m.toLowerCase().includes('aspirin'));
-    if (hasDDI) {
+    const interactions = results?.interaction_check?.interactions || results?.drug_interactions || [];
+    if (interactions.length > 0) {
       report += `⚠️ CRITICAL DRUG SAFETY WARNING:\n`;
-      report += `You are taking Warfarin and Aspirin together. These two medications both thin your blood and can cause severe internal bleeding or easy bruising when taken at the same time.\n\n`;
-      report += `RECOMMENDED STEPS:\n`;
-      report += `1. Contact your doctor or cardiologist immediately to confirm if taking both medications is necessary for you.\n`;
-      report += `2. Get your blood clotting time checked (PT/INR test) as scheduled by your clinic.\n`;
-      report += `3. Watch for unusual signs of bleeding, like blood in your urine, black stools, nosebleeds, or large bruises.\n`;
-      report += `4. Do NOT stop taking your medication without consulting Dr. Carter or your physician.\n`;
+      interactions.forEach(interaction => {
+        report += `- ${interaction.dr1} + ${interaction.dr2}: ${interaction.effect} (Severity: ${interaction.severity || 'unspecified'})\n`;
+      });
+      report += `\nRECOMMENDED STEPS:\n`;
+      (results.recommended_workup || []).forEach((step, index) => {
+        report += `${index + 1}. ${step}\n`;
+      });
     } else {
-      report += `Your checked symptoms and medications have been logged. No critical drug-drug interactions were flagged in your active list.\n\n`;
-      report += `General Guidance:\n`;
-      report += `- Continue taking your medications as prescribed.\n`;
-      report += `- If you experience new or worsening symptoms, consult your healthcare provider.\n`;
+      report += `${results?.message || 'No interaction records were returned.'}\n\n`;
+      (results?.recommended_workup || []).forEach(step => {
+        report += `- ${step}\n`;
+      });
     }
     
     report += `\n*This summary is generated for information purposes using MedGraph AI and should be discussed directly with your doctor.*`;
@@ -1530,17 +1464,27 @@ function App() {
                       </div>
                     )}
 
-                    {results.rag_status === 'no_results' && (
+                    {results.status === 'no_evidence' && (
                       <div className="triage-banner" style={{ borderColor: 'var(--accent-amber)', background: 'rgba(217, 169, 95, 0.1)', marginBottom: '14px' }}>
                         <AlertTriangle className="triage-icon" size={20} style={{ color: 'var(--accent-amber)' }} />
                         <div>
-                          <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>No matching sources</h4>
-                          <p className="triage-desc">{results.rag_message || 'No relevant clinical guideline evidence was found for this query.'} Add more specific symptoms, medications, or history and try again.</p>
+                          <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>No supporting information</h4>
+                          <p className="triage-desc">{results.message}</p>
                         </div>
                       </div>
                     )}
 
-                    {results.status === 'unavailable' && (
+                    {results.status === 'graph_unavailable' && (
+                      <div className="triage-banner" style={{ borderColor: 'var(--accent-amber)', marginBottom: '14px' }}>
+                        <AlertTriangle className="triage-icon" size={20} style={{ color: 'var(--accent-amber)' }} />
+                        <div>
+                          <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>Interaction check unavailable</h4>
+                          <p className="triage-desc">{results.message}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {results.status === 'error' && (
                       <div className="triage-banner" style={{ borderColor: 'var(--accent-rose)', marginBottom: '14px' }}>
                         <AlertTriangle className="triage-icon" size={20} style={{ color: 'var(--accent-rose)' }} />
                         <div>
@@ -1551,12 +1495,12 @@ function App() {
                     )}
 
                     {/* Flashing Warning Banner */}
-                    {(results.requires_immediate_intervention || results.critical_flag) && (
+                    {results.interaction_check?.status === 'ok' && results.interaction_check.interactions?.length > 0 && (
                       <div className="triage-banner critical">
                         <ShieldAlert className="triage-icon" size={20} />
                         <div>
                           <h4 className="triage-title">High-risk medicine interaction</h4>
-                          {results.drug_interactions && results.drug_interactions.map((interaction, i) => (
+                          {results.interaction_check.interactions.map((interaction, i) => (
                             <p key={i} className="triage-desc" style={{ color: 'var(--text-contrast)', fontWeight: '500' }}>
                               <strong>{interaction.dr1}</strong> + <strong>{interaction.dr2}</strong>: {interaction.effect} (Severity: {interaction.severity})
                             </p>
@@ -1589,19 +1533,19 @@ function App() {
 
                           <p className="diagnosis-evidence">{diag.evidence}</p>
 
-                          {diag.citations && diag.citations.length > 0 && (
-                            <div className="badges-row">
-                              {diag.citations.map((citation, cIdx) => (
-                                <span 
+                           {(diag.citation_ids || diag.citations || []).length > 0 && (
+                             <div className="badges-row">
+                              {(diag.citation_ids || diag.citations).map((citation, cIdx) => (
+                                <button 
                                   key={cIdx} 
                                   className="badge badge-info" 
                                   style={{ cursor: 'pointer' }}
                                   onClick={() => setActiveTab('evidence')}
-                                  title="View grounding context paragraph"
+                                  title="View supporting source"
                                 >
                                   <BookOpen size={11} />
                                   {citation}
-                                </span>
+                                </button>
                               ))}
                             </div>
                           )}
@@ -1724,15 +1668,36 @@ function App() {
 
                     <span className="section-title"><BookOpen size={12} /> Reference notes</span>
                     {ragPassages.map((passage, pIdx) => (
-                      <div key={pIdx} className="evidence-block">
+                      <article key={passage.citation_id || pIdx} className="evidence-block">
                         <div className="evidence-block-header">
-                          <span className="evidence-block-title">{passage.title}</span>
-                          <span className="badge badge-outline" style={{ fontSize: '10px' }}>{passage.match}</span>
+                          <span className="evidence-block-title">{passage.title || 'Retrieved source'}</span>
+                          <span className="badge badge-outline" style={{ fontSize: '10px' }}>{passage.source_type || 'source'}</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                          {passage.source_id || 'Unknown source'} · {passage.chunk_id || 'Unknown chunk'}
                         </div>
                         <div className="evidence-block-text">
-                          "{passage.text}"
+                          {expandedCitations[passage.citation_id]
+                            ? passage.excerpt
+                            : `${(passage.excerpt || '').slice(0, 150)}${(passage.excerpt || '').length > 150 ? '…' : ''}`}
                         </div>
-                      </div>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '10px' }}>
+                          {(passage.excerpt || '').length > 150 && (
+                            <button
+                              type="button"
+                              className="info-text-link"
+                              onClick={() => setExpandedCitations(prev => ({ ...prev, [passage.citation_id]: !prev[passage.citation_id] }))}
+                            >
+                              {expandedCitations[passage.citation_id] ? 'Collapse excerpt' : 'Expand excerpt'}
+                            </button>
+                          )}
+                          {passage.url && (
+                            <a className="info-text-link" href={passage.url} target="_blank" rel="noopener noreferrer">
+                              Open source
+                            </a>
+                          )}
+                        </div>
+                      </article>
                     ))}
                   </div>
                 )}

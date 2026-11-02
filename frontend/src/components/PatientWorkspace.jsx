@@ -325,30 +325,37 @@ export default function PatientWorkspace({
                   </div>
 
                   {/* Warning Banner */}
-                  {results.rag_status === 'no_results' ? (
+                  {results.status === 'no_evidence' ? (
                     <div className="triage-banner warning" style={{ margin: 0, backgroundColor: 'rgba(245, 158, 11, 0.06)', borderColor: 'rgba(245, 158, 11, 0.35)' }}>
                       <ShieldAlert className="triage-icon" size={26} style={{ color: 'var(--accent-amber)' }} />
                       <div>
                         <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>No Relevant Evidence Found</h4>
                         <p className="triage-desc" style={{ color: 'var(--text-primary)', marginTop: '6px', fontSize: '13.5px', lineHeight: '1.5' }}>
-                          {results.rag_message || 'No relevant clinical guideline evidence was found for this query.'}
+                          {results.message}
                         </p>
                         <p className="triage-desc" style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '13.5px', lineHeight: '1.5' }}>
                           Add more specific symptoms, medications, or medical history and run the evaluation again.
                         </p>
                       </div>
                     </div>
-                  ) : (results.requires_immediate_intervention || results.critical_flag) ? (
+                  ) : results.status === 'graph_unavailable' ? (
+                    <div className="triage-banner warning" style={{ margin: 0, backgroundColor: 'rgba(245, 158, 11, 0.06)', borderColor: 'rgba(245, 158, 11, 0.35)' }}>
+                      <ShieldAlert className="triage-icon" size={26} style={{ color: 'var(--accent-amber)' }} />
+                      <div>
+                        <h4 className="triage-title" style={{ color: 'var(--accent-amber)' }}>Interaction check unavailable</h4>
+                        <p className="triage-desc" style={{ color: 'var(--text-primary)', marginTop: '6px', fontSize: '13.5px', lineHeight: '1.5' }}>{results.message}</p>
+                      </div>
+                    </div>
+                  ) : results.interaction_check?.status === 'ok' && results.interaction_check.interactions?.length > 0 ? (
                     <div className="triage-banner critical" style={{ margin: 0 }}>
                       <ShieldAlert className="triage-icon" size={26} />
                       <div>
                         <h4 className="triage-title" style={{ color: 'var(--accent-rose)' }}>Drug Interaction - High Severity</h4>
-                        <p className="triage-desc" style={{ color: 'var(--text-contrast)', marginTop: '6px', fontSize: '14px', fontWeight: '500' }}>
-                          A severe safety interaction has been flagged between your medications: <strong>Warfarin</strong> and <strong>Aspirin</strong>.
-                        </p>
-                        <p className="triage-desc" style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '13.5px', lineHeight: '1.5' }}>
-                          Taking these two blood-thinning medications together significantly increases the risk of bleeding or bruising. Please contact your attending cardiologist to verify this combination.
-                        </p>
+                        {results.interaction_check.interactions.map((interaction, index) => (
+                          <p key={index} className="triage-desc" style={{ color: 'var(--text-contrast)', marginTop: '6px', fontSize: '14px', fontWeight: '500' }}>
+                            <strong>{interaction.dr1}</strong> + <strong>{interaction.dr2}</strong>: {interaction.effect} (Severity: {interaction.severity || 'unspecified'}).
+                          </p>
+                        ))}
                       </div>
                     </div>
                   ) : (
@@ -371,19 +378,12 @@ export default function PatientWorkspace({
                         <div key={idx} className="diagnosis-card" style={{ padding: '18px', margin: 0 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                             <span style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-contrast)' }}>
-                              {diag.name === "Medication Interaction Hazard" ? "Pharmacological Bleeding Risk" : diag.name}
+                              {diag.name}
                             </span>
                             <span className="badge badge-outline" style={{ fontSize: '10px' }}>PATIENT ADVISORY</span>
                           </div>
                           <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-                            {diag.name === "Medication Interaction Hazard" 
-                              ? "Your profile indicates a drug safety risk. Taking Warfarin (a blood thinner) together with Aspirin increases the likelihood of side effects like bleeding or bruising. Your doctor should verify if both are required for your health."
-                              : diag.name === "Acute Coronary Syndrome (ACS)"
-                              ? "Your symptoms of chest pain radiating to the jaw with sweating require prompt medical evaluation. These symptoms are key warning indicators for cardiac concern. Please contact emergency health services or your doctor immediately."
-                              : diag.name === "Intracranial Hemorrhage"
-                              ? "Geriatric symptoms of a severe headache and confusion can indicate high-priority neurological concerns. Please seek emergency medical care."
-                              : diag.evidence
-                            }
+                            {diag.evidence}
                           </p>
                         </div>
                       ))}
@@ -394,68 +394,19 @@ export default function PatientWorkspace({
                   <div>
                     <span className="section-title">My Recommended Care Checklist</span>
                     <div className="workup-grid" style={{ marginTop: '12px' }}>
-                      {(results.requires_immediate_intervention || results.critical_flag) ? (
-                        <>
-                          <div 
-                            className={`workup-checkbox-card ${checkedWorkups['p1'] ? 'checked' : ''}`}
-                            onClick={() => setCheckedWorkups(prev => ({ ...prev, p1: !prev.p1 }))}
+                      {(results.recommended_workup || []).map((workup, wIdx) => {
+                        const key = `rec-${wIdx}`;
+                        return (
+                          <div
+                            key={key}
+                            className={`workup-checkbox-card ${checkedWorkups[key] ? 'checked' : ''}`}
+                            onClick={() => setCheckedWorkups(prev => ({ ...prev, [key]: !prev[key] }))}
                           >
                             <CheckCircle2 size={16} className="workup-icon" />
-                             <span>Contact your prescribing clinician to review your combined blood-thinner schedule.</span>
+                            <span>{workup}</span>
                           </div>
-                          <div 
-                            className={`workup-checkbox-card ${checkedWorkups['p2'] ? 'checked' : ''}`}
-                            onClick={() => setCheckedWorkups(prev => ({ ...prev, p2: !prev.p2 }))}
-                          >
-                            <CheckCircle2 size={16} className="workup-icon" />
-                            <span>Schedule your PT/INR blood clotting test as ordered by your cardiologist.</span>
-                          </div>
-                          <div 
-                            className={`workup-checkbox-card ${checkedWorkups['p3'] ? 'checked' : ''}`}
-                            onClick={() => setCheckedWorkups(prev => ({ ...prev, p3: !prev.p3 }))}
-                          >
-                            <CheckCircle2 size={16} className="workup-icon" />
-                            <span>Use a soft-bristled toothbrush to prevent gum irritation or bleeding.</span>
-                          </div>
-                          <div 
-                            className={`workup-checkbox-card ${checkedWorkups['p4'] ? 'checked' : ''}`}
-                            onClick={() => setCheckedWorkups(prev => ({ ...prev, p4: !prev.p4 }))}
-                          >
-                            <CheckCircle2 size={16} className="workup-icon" />
-                            <span>Watch for signs of bleeding like bruising easily, dark stool, or nosebleeds.</span>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div 
-                            className={`workup-checkbox-card ${checkedWorkups['g1'] ? 'checked' : ''}`}
-                            onClick={() => setCheckedWorkups(prev => ({ ...prev, g1: !prev.g1 }))}
-                          >
-                            <CheckCircle2 size={16} className="workup-icon" />
-                            <span>Continue taking all daily medications exactly as prescribed.</span>
-                          </div>
-                          <div 
-                            className={`workup-checkbox-card ${checkedWorkups['g2'] ? 'checked' : ''}`}
-                            onClick={() => setCheckedWorkups(prev => ({ ...prev, g2: !prev.g2 }))}
-                          >
-                            <CheckCircle2 size={16} className="workup-icon" />
-                             <span>Notify your clinician if you experience any new symptoms.</span>
-                          </div>
-                          {results.recommended_workup && results.recommended_workup.map((w, wIdx) => {
-                            const key = `rec-${wIdx}`;
-                            return (
-                              <div 
-                                key={key}
-                                className={`workup-checkbox-card ${checkedWorkups[key] ? 'checked' : ''}`}
-                                onClick={() => setCheckedWorkups(prev => ({ ...prev, [key]: !prev[key] }))}
-                              >
-                                <CheckCircle2 size={16} className="workup-icon" />
-                                <span>Attending physician suggestion: {w}</span>
-                              </div>
-                            );
-                          })}
-                        </>
-                      )}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

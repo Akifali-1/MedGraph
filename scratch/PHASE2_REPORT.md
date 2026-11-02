@@ -78,6 +78,13 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - Diagnosis top-1/top-3 accuracy: **not measured** because deterministic offline reasoning is not a clinical accuracy measurement. Interaction precision/recall and brand/synonym mapping: **BLOCKED**.
 - Offline diagnosis latency: p50 `36.98 ms`, p95 `106.21 ms`; Gemini calls `0`; errors `0`. No secret values or secret variable names appeared in raw results.
 
+## Phase 4 / frontend
+
+- Removed the fabricated `updateRagEvidence` path, hard-coded passages, and similarity/correlation percentages from `frontend/src/App.jsx`.
+- Source cards now render only response citations: title, source type, source/chunk IDs, expandable excerpt, and optional URL. Diagnosis cards use returned citation IDs.
+- Empty evidence, graph-unavailable, and interaction states use the backend status contract. Critical alert text is built from returned interactions in both practitioner and patient views.
+- Frontend checks after this change: `npm run build` — **PASS**; `npm run lint` — **PASS**.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

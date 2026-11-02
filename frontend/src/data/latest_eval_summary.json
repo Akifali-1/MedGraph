@@ -7,29 +7,45 @@
   "citation_resolution": {
     "note": "deterministic ID-set resolution; does not verify the cited claim",
     "rate": 1.0,
-    "resolved": 37,
-    "total": 37
+    "resolved": 12,
+    "total": 12
   },
   "controls": {
-    "n": 8,
-    "no_evidence": 8,
-    "rate": 1.0
+    "n": 0,
+    "no_evidence": 0,
+    "rate": null
   },
   "diagnosis_cases": 20,
-  "diagnosis_cases_evaluated": 20,
+  "diagnosis_cases_evaluated": 4,
   "diagnosis_latency_ms": {
-    "p50": 36.98,
-    "p95": 106.21
+    "p50": 1829.83,
+    "p95": 2611.97
   },
   "diagnosis_metric": {
-    "reason": "offline deterministic reasoning was used; it is not a clinical accuracy measurement",
-    "status": "not_measured"
+    "top1": {
+      "correct": 0,
+      "n": 4,
+      "wilson_95": [
+        0.0,
+        0.4899
+      ]
+    },
+    "top3": {
+      "correct": 0,
+      "n": 4,
+      "wilson_95": [
+        0.0,
+        0.4899
+      ]
+    }
   },
   "errors": {
-    "count": 0,
-    "reasons": []
+    "count": 5,
+    "reasons": [
+      "The clinical reasoning service is unavailable. Please try again."
+    ]
   },
-  "gemini_calls_used": 0,
+  "gemini_calls_used": "not measured",
   "interactions": {
     "reason": "DDInter source download and schema verification timed out; no labels were invented",
     "status": "blocked"
@@ -37,9 +53,9 @@
   "provenance": {
     "diagnosis_set_underpowered": true,
     "label_status": "provisional",
-    "live_gemini_metrics": "not measured",
+    "live_gemini_metrics": "measured only if provider responses completed",
     "synthetic_controls": true
   },
-  "run_mode": "offline",
-  "summary_path": "eval/results/2026-11-02/summary.json"
+  "run_mode": "live",
+  "summary_path": "eval/results/2026-11-03-live/summary.json"
 }

@@ -83,7 +83,8 @@ export default function AboutPage({ onHowItWorks, onOpenLibrary, onEnterWorkspac
         <div className="info-section-body">
           <h2 id="sources-heading">Attribution and <em>access.</em></h2>
           <div className="info-principles">
-            <Metric label="DDInter 2.0">Primary interaction candidate. CC BY-NC-SA 4.0; non-commercial redistribution with attribution and ShareAlike is allowed. Download/schema verification was blocked on 2026-11-02, so the current graph was not replaced.</Metric>
+            <Metric label="Current interaction data">`synthetic-demo` — the current graph was not replaced because DDInter data was unavailable. Interaction alerts are labeled as demo data.</Metric>
+            <Metric label="DDInter 2.0">Primary interaction candidate. CC BY-NC-SA 4.0; non-commercial redistribution with attribution and ShareAlike is allowed. Download/schema verification is blocked.</Metric>
             <Metric label="Columbia disease-symptom">Public source page describing 2004 discharge-summary data. No clear redistribution license was identified. The exposed disease count is documented as a source count; the edge score remains a labeled rank heuristic.</Metric>
             <Metric label="DrugBank + RxNav">DrugBank academic access is license-gated and was not used. The NLM RxNav interaction API was discontinued on January 2, 2024.</Metric>
           </div>

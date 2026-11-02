@@ -193,7 +193,7 @@ This is an optional deployment workflow and was not used for the Phase 2 evidenc
 - [Evaluation set and metric definitions](eval/README.md)
 - [Data sources, licenses, and access notes](docs/DATA_SOURCES.md)
 
-The latest run contains 20 provisional diagnosis cases and eight synthetic boundary controls. Diagnosis accuracy was not measured because the run used deterministic offline reasoning; interaction metrics were blocked while DDInter download/schema verification timed out. See the summary for the measured control and citation-resolution checks.
+The current interaction data source is `synthetic-demo`; DDInter 2.0 (CC BY-NC-SA 4.0) remains the selected source but its CSV was unavailable, so the graph was not replaced. Demo interaction alerts are labeled accordingly. The latest run contains 20 provisional diagnosis cases and eight synthetic boundary controls. Live diagnosis evaluation stopped when provider errors exceeded 20 percent; interaction metrics remain blocked. See the summaries for measured control, latency, and citation-resolution checks.
 
 ---
 

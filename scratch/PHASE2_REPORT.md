@@ -112,6 +112,9 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - `frontend/npm run build` — **PASS**.
 - `frontend/npm run lint` — **PASS**.
 - `docker build --progress=plain -t medgraph-phase2 .` — **PASS**; only the existing two `FromAsCasing` warnings.
+- Final `git status --short --branch` — clean on `phase2-evidence`.
+- Final port checks: `8000=FREE`, `5173=FREE`; all temporary verification ports were also free. No MedGraph uvicorn or Vite process remained.
+- Phase 2 commits are listed in the branch log; no push or merge was performed.
 
 ## Decisions
 

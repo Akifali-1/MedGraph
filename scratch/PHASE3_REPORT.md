@@ -121,3 +121,11 @@ The dense retrieval initialization was changed to open the existing Pinecone ind
 - Citation resolution in live raw results: `12/12`; this checks ID resolution only, not claim validity.
 - Live summary: `eval/results/2026-11-03-live/summary.md` and `summary.json`. The prior offline results remain separately labeled under `eval/results/2026-11-02/`.
 - Gemini call count: **not measured**. Interaction metrics and brand/synonym mapping remain **BLOCKED** because DDInter data is unavailable.
+
+## Phase D — real interaction data
+
+### D1–D2
+
+- Command: `Get-ChildItem scratch/data` / recursive file check.
+- Result: **BLOCKED**. No DDInter CSV is present under `scratch/data/`; therefore no file metadata, schema, hash, Neo4j mutation, interaction-case generation, or direct interaction metric run was performed.
+- No files were moved. No Neo4j writes, deletes, or Pinecone writes/deletes were performed.

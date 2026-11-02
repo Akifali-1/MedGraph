@@ -72,3 +72,24 @@ Working directory: `C:\PROJECTS\Medgraph\medgraph`
 ## Phase B
 
 The dense retrieval initialization was changed to open the existing Pinecone index with `allow_create=False`; no `from_documents` or upsert path is used for live diagnosis/evaluation.
+
+### B1 — embedding dimension
+
+- Command: approved Python call to `get_embeddings().embed_query(...)` with no test/demo flags.
+- Result: **PASS**. Gemini embedding length was `3072`, matching Pinecone dimension `3072`.
+
+### B2 — live controls
+
+- Command: live `get_retrieval_diagnostics` run over all eight records in `eval/cases/controls.jsonl`, paced 7.6 seconds between embedding requests.
+- Result: **PASS**. Threshold was `0.35`. Controls `control-001`, `002`, `003`, `007`, and `008` had accepted dense retrieval with top scores `0.791214`, `0.824493408`, `0.811771393`, `0.809387207`, and `0.8088416755`; they therefore did not satisfy the expected no-evidence boundary. Empty/near-empty controls `004`, `005`, and `006` produced empty retrieval after the provider rejected empty embedding parts with HTTP 400 `INVALID_ARGUMENT`.
+- Live control no-evidence boundary rate: `3/8` (`37.5%`) by empty retrieval; threshold rejections: `0/8`; accepted dense retrieval: `5/8`. This is a retrieval-boundary measurement, not clinical accuracy.
+- Full raw diagnostics, including every score and source metadata, are in ignored `scratch/phase3_retrieval_live.json`.
+
+### B3 — semantic queries
+
+- Command: the same paced live diagnostics run for three required semantic queries.
+- Result: **PASS**. All were accepted above threshold `0.35`:
+  - Warfarin plus aspirin bleeding: top score `0.8771668075`; source ID `AHA_ACC_Guideline`; source type `guideline`.
+  - Acute chest pain with ECG: top score `0.860542327`; source ID `AHA_ACC_Guideline`; source type `guideline`.
+  - Headache with confusion and hemorrhage: top score `0.852973968`; source ID `AHA_ACC_Guideline`; source type `guideline`.
+- The existing Pinecone metadata did not contain chunk IDs for these rows; diagnostics recorded `chunk_id=unknown` rather than inventing one.

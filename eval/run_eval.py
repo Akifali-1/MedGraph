@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
@@ -51,14 +52,22 @@ def percentile(values: list[float], quantile: float) -> float | None:
     return round(values[lower] + (values[upper] - values[lower]) * (position - lower), 2)
 
 
-def request_json(url: str, payload: dict[str, Any], retries: int = 3) -> tuple[int, dict[str, Any], float, str | None]:
+def request_json(
+    url: str,
+    payload: dict[str, Any],
+    retries: int = 3,
+    access_token: str | None = None,
+) -> tuple[int, dict[str, Any], float, str | None]:
     started = time.perf_counter()
     last_error = None
     for attempt in range(retries + 1):
+        headers = {"Content-Type": "application/json"}
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
         request = Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         try:
@@ -82,6 +91,25 @@ def request_json(url: str, payload: dict[str, Any], retries: int = 3) -> tuple[i
     return 0, {}, (time.perf_counter() - started) * 1000, last_error
 
 
+def login_for_live_eval(base_url: str) -> str:
+    """Obtain a short-lived demo practitioner token without writing it anywhere."""
+    username = os.getenv("MEDGRAPH_EVAL_EMAIL", "e.carter@medgraph.ai")
+    password = os.getenv("MEDGRAPH_EVAL_PASSWORD", "password")
+    body = urlencode({
+        "username": username,
+        "password": password,
+        "scope": "medical_practitioner",
+    }).encode("utf-8")
+    request = Request(
+        f"{base_url}/auth/token",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))["access_token"]
+
+
 def sanitize_result(case: dict[str, Any], status_code: int, result: dict[str, Any], latency_ms: float, error: str | None) -> dict[str, Any]:
     return {
         "id": case["id"],
@@ -99,7 +127,12 @@ def sanitize_result(case: dict[str, Any], status_code: int, result: dict[str, An
     }
 
 
-def run_case_set(base_url: str, cases: list[dict[str, Any]], offline: bool) -> list[dict[str, Any]]:
+def run_case_set(
+    base_url: str,
+    cases: list[dict[str, Any]],
+    offline: bool,
+    access_token: str | None = None,
+) -> list[dict[str, Any]]:
     results = []
     # Keep the endpoint and provider budget below eight requests per minute in
     # both modes. Offline mode still exercises the real HTTP route.
@@ -117,7 +150,9 @@ def run_case_set(base_url: str, cases: list[dict[str, Any]], offline: bool) -> l
             "medications": case.get("medications", []),
             "comorbidities": case.get("comorbidities", []),
         }
-        status_code, result, latency_ms, error = request_json(f"{base_url}/diagnose", payload)
+        status_code, result, latency_ms, error = request_json(
+            f"{base_url}/diagnose", payload, access_token=access_token
+        )
         last_request = time.monotonic()
         results.append(sanitize_result(case, status_code, result, latency_ms, error))
         errors = sum(1 for item in results if item["error"] or item["status_code"] >= 400)
@@ -230,13 +265,14 @@ def main() -> int:
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--offline", action="store_true", help="Use explicit deterministic test mode; do not report clinical accuracy.")
+    parser.add_argument("--diagnosis-only", action="store_true", help="Run diagnosis.jsonl without the control cases.")
     args = parser.parse_args()
     output_dir = ROOT / "eval" / "results" / args.date
     output_dir.mkdir(parents=True, exist_ok=True)
 
     diagnosis_cases = load_jsonl(CASES_DIR / "diagnosis.jsonl")
     controls = load_jsonl(CASES_DIR / "controls.jsonl")
-    cases = diagnosis_cases + controls
+    cases = diagnosis_cases if args.diagnosis_only else diagnosis_cases + controls
     env = os.environ.copy()
     env["ALLOW_TEST_AUTH"] = "true"
     if args.offline:
@@ -261,7 +297,8 @@ def main() -> int:
                 if server.poll() is not None:
                     raise RuntimeError(f"uvicorn exited with code {server.returncode}")
                 time.sleep(0.25)
-        results = run_case_set(base_url, cases, args.offline)
+        access_token = None if args.offline else login_for_live_eval(base_url)
+        results = run_case_set(base_url, cases, args.offline, access_token)
     finally:
         server.terminate()
         try:

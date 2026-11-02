@@ -123,7 +123,7 @@ def get_gemini_chat():
                 google_api_key=google_key, 
                 model=Config.GEMINI_MODEL,
                 temperature=0.1,
-                request_timeout=120,
+                request_timeout=float(os.getenv("GEMINI_REQUEST_TIMEOUT", "120")),
                 retries=0,
             )
         else:

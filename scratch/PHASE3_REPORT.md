@@ -68,3 +68,7 @@ Working directory: `C:\PROJECTS\Medgraph\medgraph`
 ### A4 — live cardiac vignette
 
 - Pending after the live backend verification run. Expected engine is `gemini`; the actual response and citation IDs will be recorded here.
+
+## Phase B
+
+The dense retrieval initialization was changed to open the existing Pinecone index with `allow_create=False`; no `from_documents` or upsert path is used for live diagnosis/evaluation.

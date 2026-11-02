@@ -258,20 +258,13 @@ def setup_retriever(doctor_id: str = None):
         try:
             from langchain_pinecone import PineconeVectorStore
             from backend.config.singletons import get_pinecone_index
-            index_name = Config.PINECONE_INDEX_NAME
-            
-            # Ensure pinecone index is initialized/created
-            _ = get_pinecone_index()
-            
-            dense_vectorstore = PineconeVectorStore.from_documents(
-                chunks, 
-                embeddings, 
-                index_name=index_name,
-                ids=[hashlib.sha256(
-                    (doc.metadata.get("source", "") + doc.page_content).encode("utf-8")
-                ).hexdigest() for doc in chunks],
+            # Read the existing index. This path must never re-index or mutate
+            # Pinecone during diagnosis or evaluation.
+            dense_vectorstore = PineconeVectorStore(
+                index=get_pinecone_index(allow_create=False),
+                embedding=embeddings,
             )
-            logger.info("Pinecone Vector Store initialized successfully using singleton.")
+            logger.info("Pinecone Vector Store opened read-only using singleton.")
         except Exception as e:
             logger.error(f"Pinecone setup failed: {e}. Falling back to local FAISS vector store.")
     
@@ -314,7 +307,7 @@ def setup_retriever(doctor_id: str = None):
         user_namespace = f"user_uploads_doc_{doctor_id}"
         
         user_vectorstore = PineconeVectorStore(
-            index=get_pinecone_index(),
+            index=get_pinecone_index(allow_create=False),
             embedding=embeddings,
             namespace=user_namespace
         )
@@ -335,6 +328,51 @@ def setup_retriever(doctor_id: str = None):
         
     _retrievers_cache[cache_key] = hybrid_retriever
     return hybrid_retriever
+
+
+def get_retrieval_diagnostics(query: str, top_n: int = 5, doctor_id: str = None) -> Dict[str, Any]:
+    """Return live dense scores and threshold decisions without index writes."""
+    threshold = _dense_score_threshold()
+    diagnostics: Dict[str, Any] = {
+        "query": query,
+        "threshold": threshold,
+        "top_dense_score": None,
+        "dense_scores": [],
+        "retrieved_documents": [],
+        "decision": "empty_retrieval",
+    }
+    try:
+        retriever = setup_retriever(doctor_id)
+        dense_branch = next(
+            (branch for branch in getattr(retriever, "retrievers", []) if isinstance(branch, _DenseRelevanceRetriever)),
+            retriever if isinstance(retriever, _DenseRelevanceRetriever) else None,
+        )
+        if dense_branch is None:
+            diagnostics["decision"] = "empty_retrieval"
+            return diagnostics
+        scored = dense_branch.vectorstore.similarity_search_with_relevance_scores(
+            query,
+            k=min(int(top_n), dense_branch.k),
+            **dense_branch.search_kwargs,
+        )
+        diagnostics["dense_scores"] = [
+            {
+                "score": float(score),
+                "source_id": str((doc.metadata or {}).get("source_id") or (doc.metadata or {}).get("source") or "unknown"),
+                "source_type": str((doc.metadata or {}).get("source_type") or "guideline"),
+                "chunk_id": str((doc.metadata or {}).get("chunk_id") or "unknown"),
+            }
+            for doc, score in scored
+        ]
+        if diagnostics["dense_scores"]:
+            diagnostics["top_dense_score"] = diagnostics["dense_scores"][0]["score"]
+            diagnostics["decision"] = "accepted" if any(
+                item["score"] >= threshold for item in diagnostics["dense_scores"]
+            ) else "threshold"
+        return diagnostics
+    except Exception as exc:
+        diagnostics["error"] = f"{type(exc).__name__}: {exc}"
+        return diagnostics
 
 def get_relevant_guideline_documents(query: str, top_n: int = 5, doctor_id: str = None) -> List[Document]:
     """Retrieves source documents while preserving citation metadata."""

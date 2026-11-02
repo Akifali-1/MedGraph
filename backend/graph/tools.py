@@ -14,6 +14,15 @@ def query_knowledge_graph(patient_medications: list, patient_symptoms: list, doc
     # Normalize inputs to list if they aren't
     meds = list(patient_medications) if patient_medications else []
     sympts = list(patient_symptoms) if patient_symptoms else []
+
+    if not neo4j_client.available:
+        return {
+            "drug_interactions": [],
+            "probable_diseases": [],
+            "critical_interaction_flag": False,
+            "interaction_check": "unavailable",
+            "graph_check": "unavailable",
+        }
     
     interactions = neo4j_client.query_drug_interactions(meds, doctor_id=doctor_id)
     diseases = neo4j_client.query_symptom_diseases(sympts)
@@ -28,4 +37,6 @@ def query_knowledge_graph(patient_medications: list, patient_symptoms: list, doc
         "drug_interactions": interactions,
         "probable_diseases": diseases,
         "critical_interaction_flag": has_critical
+        ,"interaction_check": "available"
+        ,"graph_check": "available"
     }

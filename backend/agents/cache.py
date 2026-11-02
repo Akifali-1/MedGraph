@@ -17,9 +17,9 @@ class RedisCacheManager:
         self.use_fallback = True
         
         import os
-        if os.getenv("CI") == "true" or os.getenv("TESTING") == "true" or os.getenv("MOCK_REDIS") == "true":
+        if Config.MOCK_REDIS:
             self.use_fallback = True
-            logger.warning("MOCK_REDIS/CI/Testing environment active. Bypassing Redis initialization and using local in-memory fallback cache.")
+            logger.warning("MOCK_REDIS=true. Bypassing Redis initialization and using local in-memory fallback cache.")
             return
 
         try:
@@ -117,7 +117,8 @@ def diagnose_patient(patient: PatientInput, request_id: Optional[str] = None, do
         "iteration": 0,
         "query_refinement": "",
         "final_output": None,
-        "citation_warnings_present": False
+        "citation_warnings_present": False,
+        "data_mode": "live"
     }
     
     # Run the graph

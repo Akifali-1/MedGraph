@@ -1,6 +1,8 @@
 import os
 
 os.environ["TESTING"] = "true"
+os.environ["MOCK_NEO4J"] = "true"
+os.environ["MOCK_REDIS"] = "true"
 
 from langchain_core.documents import Document
 

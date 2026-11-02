@@ -28,6 +28,8 @@ class Config:
     # Redis
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+    MOCK_NEO4J = os.getenv("MOCK_NEO4J", "false").lower() == "true"
+    MOCK_REDIS = os.getenv("MOCK_REDIS", "false").lower() == "true"
 
     # LangSmith
     LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"

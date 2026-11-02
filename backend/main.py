@@ -79,10 +79,10 @@ async def lifespan(app: FastAPI):
             log.info("lifespan_startup_redis_connected")
         except Exception as e:
             import os
-            if os.getenv("CI") == "true" or os.getenv("TESTING") == "true" or os.getenv("MOCK_REDIS") == "true":
+            if Config.MOCK_REDIS:
                 log.warning("lifespan_startup_redis_fallback_warning", error=str(e))
             else:
-                raise
+                log.warning("lifespan_startup_redis_unavailable", error=str(e))
         
         # 2. Neo4j connection verification
         neo4j_client = get_neo4j_client()
@@ -375,14 +375,14 @@ def google_login(payload: GoogleLoginRequest):
 def diagnose(
     request: Request,
     patient: PatientInput,
-    mode: str = "react",
+    mode: str = "dag",
     current_user: AuthUser = Depends(require_roles(Role.medical_practitioner, Role.patient)),
 ):
     """
     Ingests patient details, parses symptoms & medications, queries
     clinical guidelines RAG + Neo4j Graph, and generates differential diagnoses.
-    Primary mode: 'react' (Parallel-Retrieval Augmented ReAct Agent).
-    Legacy fallback: 'dag' (static orchestrator).
+    Primary mode: 'dag' (LangGraph orchestrator).
+    Opt-in mode: 'react' (Retrieval Augmented ReAct Agent).
     """
     mode = mode.strip().lower()
     if mode not in {"react", "dag"}:
@@ -462,9 +462,7 @@ def health_check(request: Request):
     except Exception as e:
         import os
         redis_is_mock = (
-            os.getenv("CI") == "true"
-            or os.getenv("TESTING") == "true"
-            or os.getenv("MOCK_REDIS") == "true"
+            Config.MOCK_REDIS
         )
         dependencies["redis"] = "mock (healthy)" if redis_is_mock else f"unhealthy: {str(e)}"
         # Offline Redis is an explicit local/test mode, not a failed dependency.
@@ -477,8 +475,12 @@ def health_check(request: Request):
         neo4j_client = get_neo4j_client()
         if neo4j_client.use_mock:
             dependencies["neo4j"] = "mock (healthy)"
+        elif not neo4j_client.available:
+            dependencies["neo4j"] = f"unhealthy: {neo4j_client.error or 'connection unavailable'}"
+            is_healthy = False
         else:
             # Quick check on active connection
+            neo4j_client.driver.verify_connectivity()
             dependencies["neo4j"] = "healthy"
     except Exception as e:
         dependencies["neo4j"] = f"unhealthy: {str(e)}"
@@ -487,7 +489,7 @@ def health_check(request: Request):
     # 3. Pinecone Check
     try:
         from backend.config.singletons import get_pinecone_index
-        _ = get_pinecone_index()
+        _ = get_pinecone_index(allow_create=False)
         dependencies["pinecone"] = "healthy"
     except Exception as e:
         dependencies["pinecone"] = f"unhealthy: {str(e)}"

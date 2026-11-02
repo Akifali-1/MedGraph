@@ -34,11 +34,14 @@ MOCK_INDICATIONS = [
 class Neo4jClient:
     def __init__(self):
         self.driver = None
-        self.use_mock = True
+        self.use_mock = False
+        self.available = False
+        self.error = None
         
-        import os
-        if os.getenv("TESTING") == "true" or os.getenv("CI") == "true":
-            logger.info("Testing/CI environment active. Bypassing live Neo4j initialization and using local mock knowledge graph.")
+        if Config.MOCK_NEO4J:
+            self.use_mock = True
+            self.available = True
+            logger.info("MOCK_NEO4J=true. Using local mock knowledge graph.")
             return
 
         uri = Config.NEO4J_URI
@@ -51,15 +54,20 @@ class Neo4jClient:
                 self.driver = GraphDatabase.driver(uri, auth=(username, password))
                 # Verify connection
                 self.driver.verify_connectivity()
-                self.use_mock = False
+                self.available = True
                 logger.info("Connected to live Neo4j database successfully.")
             except Exception as e:
+                self.error = str(e)
+                if self.driver:
+                    self.driver.close()
+                self.driver = None
                 logger.warning(
                     f"Could not connect to live Neo4j database: {e}. "
-                    "Falling back to local in-memory knowledge graph representation."
+                    "Neo4j-dependent checks are unavailable."
                 )
         else:
-            logger.info("NEO4J_PASSWORD not provided in config. Using local in-memory knowledge graph.")
+            self.error = "NEO4J_PASSWORD not provided in config"
+            logger.warning("NEO4J_PASSWORD not provided in config. Neo4j-dependent checks are unavailable.")
 
     def close(self):
         if self.driver:
@@ -85,6 +93,10 @@ class Neo4jClient:
                             "effect": interaction["r.effect"]
                         })
             return results
+
+        if not self.available:
+            logger.warning("Neo4j interaction check unavailable: %s", self.error)
+            return []
 
         # Live Cypher Query with tenant boundary check
         logger.info(f"Querying live Neo4j drug interactions for: {medications} under context doctor_id: {doctor_id}")
@@ -124,6 +136,10 @@ class Neo4jClient:
             # Sort by score descending
             sorted_diseases = sorted(disease_scores.items(), key=lambda x: x[1], reverse=True)
             return [{"name": name, "score": round(score, 2)} for name, score in sorted_diseases]
+
+        if not self.available:
+            logger.warning("Neo4j symptom-disease check unavailable: %s", self.error)
+            return []
 
         # Live Cypher Query
         logger.info(f"Querying live Neo4j symptom-disease mappings for: {symptoms}")

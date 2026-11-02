@@ -84,7 +84,7 @@ def get_embeddings():
             
     return _embeddings
 
-def get_pinecone_index():
+def get_pinecone_index(allow_create=True):
     """Returns a singleton Pinecone index client. Automatically creates serverless index if missing."""
     global _pinecone_index
     if _pinecone_index is None:
@@ -97,6 +97,8 @@ def get_pinecone_index():
         
         existing_indexes = [idx.name for idx in pc.list_indexes()]
         if index_name not in existing_indexes:
+            if not allow_create:
+                raise ValueError(f"Pinecone index '{index_name}' does not exist.")
             embeddings = get_embeddings()
             emb_dim = len(embeddings.embed_query("test"))
             logger.info(f"Creating Pinecone Serverless Index '{index_name}' (dimension: {emb_dim})...")

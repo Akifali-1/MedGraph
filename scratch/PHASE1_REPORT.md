@@ -54,6 +54,15 @@ Entries will be added after each item with the change, command, result, and rema
 - Second retry, same command with a 360-second timeout: **PASS**. Image built successfully. Docker emitted only `FromAsCasing` warnings for the existing `as`/`FROM` capitalization.
 - Remaining: the Dockerfile casing warnings are cosmetic and were not changed in this item.
 
+### Work item 2 — DAG default
+
+- Changed `/diagnose` default `mode` from `react` to `dag`; the docstring now identifies DAG as primary and ReAct as opt-in.
+- Added explicit `MOCK_NEO4J`/`MOCK_REDIS` flags to offline tests and added `data_mode` to DAG output (`demo` when the explicit graph mock is active).
+- Frontend `fetch('/diagnose')` already omitted a mode query, so it now reaches the DAG default without a frontend change.
+- `python -m pytest ...` with the system interpreter — **BLOCKED/command error**: system Python lacked `slowapi`; no code was changed for this error.
+- `.venv/Scripts/python.exe -m pytest backend/tests/test_phase1_stabilization.py -q` — **PASS**, 1 passed.
+- Remaining: ReAct live execution and Gemini remain unverified; it stays available only by `?mode=react`.
+
 ## Decisions
 
 - The DAG is the sole default `/diagnose` path; ReAct remains available only by explicit `mode=react`.

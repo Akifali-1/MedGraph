@@ -1,6 +1,8 @@
 import os
 os.environ["TESTING"] = "true"
 os.environ["ALLOW_TEST_AUTH"] = "true"
+os.environ["MOCK_NEO4J"] = "true"
+os.environ["MOCK_REDIS"] = "true"
 import sys
 import logging
 

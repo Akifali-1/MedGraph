@@ -7,6 +7,8 @@ from fastapi import HTTPException
 os.environ["TESTING"] = "true"
 os.environ["ALLOW_TEST_AUTH"] = "true"
 os.environ["ALLOW_MOCK_AUTH"] = "true"
+os.environ["MOCK_NEO4J"] = "true"
+os.environ["MOCK_REDIS"] = "true"
 
 from backend.auth import RegisterRequest, Role, register_user
 from backend.graph.client import MOCK_INTERACTIONS, Neo4jClient

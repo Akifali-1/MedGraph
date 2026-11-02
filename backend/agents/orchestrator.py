@@ -33,6 +33,7 @@ class AgentState(TypedDict):
     query_refinement: str
     final_output: Optional[Dict[str, Any]]
     citation_warnings_present: bool
+    data_mode: str
 
 # Node 1: Intake and Entity Resolution
 def intake_node(state: AgentState) -> Dict[str, Any]:
@@ -57,6 +58,7 @@ def intake_node(state: AgentState) -> Dict[str, Any]:
         "confidence": 0.0,
         "drug_interaction_flag": False,
         "citation_warnings_present": False
+        ,"data_mode": "live"
     }
 
 # Node 2: RAG Agent
@@ -91,10 +93,13 @@ def graph_node(state: AgentState) -> Dict[str, Any]:
         "doctor_id": state.get("doctor_id")
     })
     
+    from backend.config.singletons import get_neo4j_client
+    neo4j_client = get_neo4j_client()
     log.info("graph_node_completed", request_id=request_id, critical_interaction_flag=graph_out["critical_interaction_flag"])
     return {
         "graph_results": graph_out,
-        "drug_interaction_flag": graph_out["critical_interaction_flag"]
+        "drug_interaction_flag": graph_out["critical_interaction_flag"],
+        "data_mode": "demo" if neo4j_client.use_mock else state.get("data_mode", "live"),
     }
 
 # Node 4: Aggregator Node
@@ -404,6 +409,8 @@ def output_node(state: AgentState) -> Dict[str, Any]:
         "recommended_workup": state.get("final_output", {}).get("recommended_workup", []),
         "rag_status": "found" if state.get("rag_chunks") else "no_results",
         "rag_message": None if state.get("rag_chunks") else NO_EVIDENCE_MESSAGE
+        ,"interaction_check": graph_res.get("interaction_check", "available")
+        ,"data_mode": state.get("data_mode", "live")
     }
     reasoning_output = state.get("final_output") or {}
     if reasoning_output.get("status"):

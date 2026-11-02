@@ -44,6 +44,11 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - The current Neo4j graph was left unchanged. `backend/graph/data/drugbank_mini.csv` and `backend/graph/data/disease_symptoms.csv` were not moved; no files were moved in this phase.
 - No Neo4j delete or reseed was run in this step. The Phase 0 dump remains the rollback record.
 
+### Phase 1 / 1e — TREATED_BY
+
+- Removed the two hard-coded `TREATED_BY` seed statements from `backend/graph/seed.py` because no verified Phase 2 source supports those treatment edges.
+- No live graph mutation was needed for this change; the Phase 0 graph already had `TREATED_BY=0`.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

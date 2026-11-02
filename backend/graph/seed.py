@@ -86,9 +86,6 @@ def seed_database():
     MERGE (dr1)-[:INTERACTS_WITH {severity: 'HIGH', effect: 'increased bleeding risk'}]->(dr2)
     MERGE (dr2)-[:INTERACTS_WITH {severity: 'HIGH', effect: 'increased bleeding risk'}]->(dr1)
 
-    // Create Disease-treated-by-Drug
-    MERGE (d1)-[:TREATED_BY]->(dr2)
-    MERGE (d2)-[:TREATED_BY]->(dr2)
     """
 
     try:

@@ -105,6 +105,14 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 
 - Updated `README.md` to describe the implemented Gemini-default/SageMaker-optional path, explicit mock behavior, evaluation links, data-source documentation, and measured/blocked evaluation status.
 
+### Final checks
+
+- `.\.venv\Scripts\python.exe -m pytest backend/tests -q` — **PASS**, 19 passed, 2 warnings.
+- `.\.venv\Scripts\python.exe backend/tests/test_flow.py` — **PASS**, all offline integration tests completed successfully.
+- `frontend/npm run build` — **PASS**.
+- `frontend/npm run lint` — **PASS**.
+- `docker build --progress=plain -t medgraph-phase2 .` — **PASS**; only the existing two `FromAsCasing` warnings.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

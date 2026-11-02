@@ -298,7 +298,12 @@ def setup_retriever(doctor_id: str = None):
 
     # Setup User Uploads Retriever from Pinecone (Isolate namespace per doctor)
     try:
-        if not pinecone_key or embeddings is None or not doctor_id:
+        if (
+            not pinecone_key
+            or embeddings is None
+            or not doctor_id
+            or os.getenv("MEDGRAPH_SKIP_USER_UPLOAD_RETRIEVAL", "false").lower() == "true"
+        ):
             raise ValueError("No authenticated user upload index is configured.")
             
         from langchain_pinecone import PineconeVectorStore

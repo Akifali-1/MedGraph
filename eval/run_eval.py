@@ -136,7 +136,9 @@ def run_case_set(
     results = []
     # Keep the endpoint and provider budget below eight requests per minute in
     # both modes. Offline mode still exercises the real HTTP route.
-    minimum_interval = 7.6
+    # A live request normally consumes one embedding call and one reasoning
+    # call. Fifteen seconds keeps total provider calls below eight per minute.
+    minimum_interval = 15.5 if not offline else 0.1
     last_request = 0.0
     total_cases = len(cases)
     for case in cases:

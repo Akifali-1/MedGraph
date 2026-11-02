@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 
 os.environ["TESTING"] = "true"
 os.environ["ALLOW_TEST_AUTH"] = "true"
@@ -26,3 +27,38 @@ def test_diagnose_defaults_to_dag_and_react_is_opt_in(monkeypatch):
 
     assert response.status_code == 200
     assert calls == ["dag"]
+
+
+def test_health_reports_unreachable_dependencies_and_does_not_create_pinecone(monkeypatch):
+    from backend.config import Config
+    import backend.config.singletons as singletons
+
+    monkeypatch.setattr(Config, "MOCK_REDIS", False)
+    monkeypatch.setattr(Config, "REDIS_HOST", "127.0.0.1")
+    monkeypatch.setattr(Config, "REDIS_PORT", 1)
+    monkeypatch.setattr(
+        singletons,
+        "get_neo4j_client",
+        lambda: SimpleNamespace(
+            use_mock=False,
+            available=False,
+            error="connection refused",
+        ),
+    )
+
+    calls = []
+
+    def fake_pinecone(*, allow_create=True):
+        calls.append(allow_create)
+        raise ValueError("Pinecone unavailable")
+
+    monkeypatch.setattr(singletons, "get_pinecone_index", fake_pinecone)
+
+    response = TestClient(app).get("/health")
+
+    assert response.status_code == 503
+    data = response.json()
+    assert data["dependencies"]["neo4j"] == "unhealthy: connection refused"
+    assert data["dependencies"]["redis"].startswith("unhealthy:")
+    assert data["dependencies"]["pinecone"] == "unhealthy: Pinecone unavailable"
+    assert calls == [False]

@@ -63,6 +63,14 @@ Entries will be added after each item with the change, command, result, and rema
 - `.venv/Scripts/python.exe -m pytest backend/tests/test_phase1_stabilization.py -q` — **PASS**, 1 passed.
 - Remaining: ReAct live execution and Gemini remain unverified; it stays available only by `?mode=react`.
 
+### Work item 3 — truthful health and explicit mocks
+
+- Neo4j now defaults to live connection mode; only `MOCK_NEO4J=true` enables the local graph. Failed live initialization remains unavailable instead of silently becoming healthy mock mode.
+- Redis mock fallback now requires `MOCK_REDIS=true`; `/health` reports Redis down when the socket is unreachable unless that flag is explicit.
+- `/health` calls Neo4j connectivity verification for a live client and calls `get_pinecone_index(allow_create=False)`, so health cannot create a missing Pinecone index.
+- `.venv/Scripts/python.exe -m pytest backend/tests/test_phase1_stabilization.py -q` — **PASS**, 2 passed.
+- Remaining: the live environment has a reachable seeded Neo4j, but local Redis availability and Gemini/Pinecone credential behavior remain environment-dependent.
+
 ## Decisions
 
 - The DAG is the sole default `/diagnose` path; ReAct remains available only by explicit `mode=react`.

@@ -38,6 +38,12 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - The Columbia page says the count column measures discharge summaries containing a positive/current disease mention. It does not expose a numeric symptom-edge co-occurrence count; symptom rows are ranked by association strength.
 - `seed_columbia.py` now labels its existing rank score as an explicit heuristic and does not call it a measured co-occurrence weight. Formula is documented in code and `docs/DATA_SOURCES.md`.
 
+### Phase 1 / 1d — real graph reseed
+
+- **BLOCKED.** DDInter 2.0 was selected, but the public B-category CSV could not be downloaded after three attempts: two Python urllib attempts timed out while reading, and `curl.exe` timed out after 120 seconds. The exact source CSV schema could not be verified.
+- The current Neo4j graph was left unchanged. `backend/graph/data/drugbank_mini.csv` and `backend/graph/data/disease_symptoms.csv` were not moved; no files were moved in this phase.
+- No Neo4j delete or reseed was run in this step. The Phase 0 dump remains the rollback record.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

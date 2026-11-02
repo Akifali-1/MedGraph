@@ -67,7 +67,10 @@ Working directory: `C:\PROJECTS\Medgraph\medgraph`
 
 ### A4 — live cardiac vignette
 
-- Pending after the live backend verification run. Expected engine is `gemini`; the actual response and citation IDs will be recorded here.
+- First live attempt: **FAIL**. The provider returned a successful response, but the installed Gemini adapter exposed `response.content` as text blocks and the old parser called `.strip()` on the list; the request then fell through to an invalid placeholder OpenAI key. No result was reported as a diagnosis.
+- Fix: normalize Gemini text blocks, ignore placeholder OpenAI credentials, and set the Gemini client to `retries=0` so provider calls remain bounded.
+- Final command: live uvicorn on `127.0.0.1:8000` with mock flags off, authenticated demo practitioner request for cardiac symptoms.
+- Final result: **PASS**. HTTP `200`; `reasoning_engine="gemini"`; `status="ok"`; citation IDs `citation-1` and `citation-2`; two diagnoses returned. Sanitized response: `scratch/phase3_live_cardiac.json`.
 
 ## Phase B
 

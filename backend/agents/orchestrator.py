@@ -22,6 +22,23 @@ log = structlog.get_logger()
 NO_EVIDENCE_MESSAGE = "No supporting information was found in the indexed guidelines for this presentation."
 
 
+def _model_text(content: Any) -> str:
+    """Normalize Gemini's text blocks and legacy string responses."""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+            else:
+                text = getattr(item, "text", None)
+            if text:
+                parts.append(str(text))
+        return "".join(parts).strip()
+    return str(content).strip()
+
+
 def _citation_from_chunk(chunk: Any, index: int) -> Dict[str, Any]:
     """Convert retrieved document metadata into the public citation contract."""
     metadata = getattr(chunk, "metadata", {}) or {}
@@ -296,7 +313,7 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
                 {"role": "user", "content": user_prompt}
             ])
             
-            clean_content = response.content.strip()
+            clean_content = _model_text(response.content)
             if clean_content.startswith("```json"):
                 clean_content = clean_content[7:]
             if clean_content.endswith("```"):
@@ -315,6 +332,14 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
             log.error("reasoning_node_gemini_failed", request_id=request_id, error=str(e))
 
     if openai_key:
+        if (
+            openai_key.strip().lower().startswith("your_")
+            or "placeholder" in openai_key.lower()
+            or not openai_key.strip()
+        ):
+            openai_key = None
+
+    if openai_key:
         try:
             log.info("reasoning_node_invoking_openai", request_id=request_id)
             llm = ChatOpenAI(api_key=openai_key, model="gpt-4o", temperature=0.1)
@@ -324,7 +349,7 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
             ])
             
             # Clean response text in case markdown tags are wrapped around JSON
-            clean_content = response.content.strip()
+            clean_content = _model_text(response.content)
             if clean_content.startswith("```json"):
                 clean_content = clean_content[7:]
             if clean_content.endswith("```"):

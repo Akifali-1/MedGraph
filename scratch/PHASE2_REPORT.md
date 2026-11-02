@@ -91,6 +91,16 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - Added `scripts/sync_eval_to_about.py` and ran it. It copied `eval/results/2026-11-02/summary.json` to `frontend/src/data/latest_eval_summary.json`.
 - About-page data is generated from the latest committed evaluation summary; blocked and not-measured values remain labeled on the page.
 
+## Phase 6 — local pipeline verification
+
+- Fixed startup handling so explicit mock Redis does not open a socket, unavailable Neo4j does not abort uvicorn startup, and startup Pinecone inspection uses `allow_create=False`.
+- Critical interaction (`POST /diagnose`, DAG): HTTP `200`; `status="ok"`; `interaction_check.status="ok"`; returned `Warfarin + Aspirin` and reverse pair, both `severity="HIGH"`; alert was exactly `Critical drug interaction detected: Warfarin + Aspirin: increased bleeding risk (severity: HIGH); Aspirin + Warfarin: increased bleeding risk (severity: HIGH)`.
+- Cardiac evidence (`POST /diagnose`, DAG): HTTP `200`; `status="ok"`; diagnoses included `STEMI (ST-Elevation Myocardial Infarction)`, `Unstable Angina`, and `Aortic Dissection`; citations were structured objects with `citation_id`, title, source type, source ID, chunk ID, excerpt, and URL; diagnoses contained returned citation IDs.
+- Nonsense input: HTTP `200`; `status="no_evidence"`; exact message `No supporting information was found in the indexed guidelines for this presentation.`; diagnoses `[]`; structured interaction check remained present.
+- Neo4j closed-port backend: HTTP `200`; `status="graph_unavailable"`; message `The interaction check could not run.`; `interaction_check={"status":"unavailable","interactions":[]}`; diagnosis evidence remained available.
+- Unreachable dependency health: HTTP `503`; `status="unhealthy"`; Neo4j and Redis were reported `unhealthy`; Pinecone was inspected without index creation; SageMaker was `not_configured`.
+- Sanitized full response bodies were written to ignored `scratch/phase6_responses.json`. All processes started for this verification were stopped; ports 8000, 5173, 8010, 8011, and 8012 were free after the run.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

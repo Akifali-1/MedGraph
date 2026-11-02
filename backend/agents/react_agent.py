@@ -13,10 +13,21 @@ from backend.models.patient import PatientInput
 from backend.retrieval.retriever import get_relevant_guidelines
 from backend.graph.tools import query_knowledge_graph
 from backend.agents.evidence import verify_diagnosis_citations
+from backend.agents.orchestrator import (
+    NO_EVIDENCE_MESSAGE,
+    _attach_citation_ids,
+    _build_citations,
+    _interaction_contract,
+    _response_status_and_message,
+)
 
 logger = logging.getLogger(__name__)
 
-NO_RAG_RESULTS_MESSAGE = "No relevant clinical guideline evidence was found for this query."
+NO_RAG_RESULTS_MESSAGE = NO_EVIDENCE_MESSAGE
+
+
+def _guideline_texts(guidelines: List[Any]) -> List[str]:
+    return [str(getattr(guideline, "page_content", guideline)) for guideline in guidelines]
 
 # State Definition
 class ReActState(TypedDict):
@@ -27,7 +38,7 @@ class ReActState(TypedDict):
     steps: Annotated[List[Dict[str, Any]], operator.add]   # accumulates trace steps
     messages: Annotated[List[BaseMessage], add_messages]   # accumulates full message history
     initial_ddi: Dict[str, Any]
-    initial_guidelines: List[str]
+    initial_guidelines: List[Any]
     diagnoses: List[Dict[str, Any]]
     recommended_workup: List[str]
     critical_flag: bool
@@ -586,11 +597,7 @@ def simulate_react_flow(state: ReActState) -> Dict[str, Any]:
             "Observation"
         ]
 
-    has_graph_evidence = bool(
-        state["initial_ddi"].get("probable_diseases")
-        or state["initial_ddi"].get("drug_interactions")
-    )
-    if not state.get("initial_guidelines") and not has_graph_evidence:
+    if not state.get("initial_guidelines"):
         diagnoses = []
         workup = [NO_RAG_RESULTS_MESSAGE]
         trace_steps = [{
@@ -600,10 +607,17 @@ def simulate_react_flow(state: ReActState) -> Dict[str, Any]:
         }]
 
     diagnoses, citation_warnings = verify_diagnosis_citations(
-        diagnoses, state.get("initial_guidelines", [])
+        diagnoses, _guideline_texts(state.get("initial_guidelines", []))
+    )
+    citations = _build_citations(state.get("initial_guidelines", []))
+    diagnoses = _attach_citation_ids(diagnoses, citations)
+    status, message = _response_status_and_message(
+        state.get("initial_guidelines", []), state["initial_ddi"], {}
     )
     return {
         "diagnoses": diagnoses,
+        "citations": citations,
+        "retrieved_sources": citations,
         "drug_interactions": state["initial_ddi"].get("drug_interactions", []),
         "critical_flag": critical_flag,
         "iterations_taken": len(trace_steps),
@@ -611,7 +625,10 @@ def simulate_react_flow(state: ReActState) -> Dict[str, Any]:
         "recommended_workup": workup,
         "trace_steps": trace_steps,
         "rag_status": "found" if state.get("initial_guidelines") else "no_results",
-        "rag_message": None if state.get("initial_guidelines") else NO_RAG_RESULTS_MESSAGE
+        "rag_message": None if state.get("initial_guidelines") else NO_RAG_RESULTS_MESSAGE,
+        "interaction_check": _interaction_contract(state["initial_ddi"]),
+        "status": status,
+        "message": message,
     }
 
 def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines: List[str], request_id: str, doctor_id: Optional[str] = None) -> Dict[str, Any]:
@@ -627,15 +644,14 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
     except Exception:
         pass
 
-    has_graph_evidence = bool(
-        initial_ddi.get("probable_diseases") or initial_ddi.get("drug_interactions")
-    )
-    if not initial_guidelines and not has_graph_evidence:
+    if not initial_guidelines:
         return {
             "diagnoses": [], "drug_interactions": [], "critical_flag": False,
             "iterations_taken": 0, "citation_warnings_flagged": False,
             "recommended_workup": [], "trace_steps": [],
-            "status": "no_results", "message": NO_RAG_RESULTS_MESSAGE,
+            "citations": [], "retrieved_sources": [],
+            "interaction_check": _interaction_contract(initial_ddi),
+            "status": "no_evidence", "message": NO_RAG_RESULTS_MESSAGE,
             "rag_status": "no_results", "rag_message": NO_RAG_RESULTS_MESSAGE,
             "fallbacks_active": {"llm": False, "neo4j": neo4j_fallback},
         }
@@ -736,11 +752,18 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
                     break
         
         diagnoses, citation_warnings = verify_diagnosis_citations(
-            diagnoses, result_state.get("initial_guidelines", [])
+            diagnoses, _guideline_texts(result_state.get("initial_guidelines", []))
+        )
+        citations = _build_citations(result_state.get("initial_guidelines", []))
+        diagnoses = _attach_citation_ids(diagnoses, citations)
+        status, message = _response_status_and_message(
+            result_state.get("initial_guidelines", []), initial_ddi, {}
         )
         # Compile response matching schema
         output = {
             "diagnoses": diagnoses,
+            "citations": citations,
+            "retrieved_sources": citations,
             "drug_interactions": initial_ddi.get("drug_interactions", []),
             "critical_flag": critical_flag,
             "iterations_taken": len(result_state.get("steps", [])),
@@ -749,6 +772,9 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
             "trace_steps": result_state.get("steps", []),
             "rag_status": "found" if result_state.get("initial_guidelines") else "no_results",
             "rag_message": None if result_state.get("initial_guidelines") else NO_RAG_RESULTS_MESSAGE,
+            "interaction_check": _interaction_contract(initial_ddi),
+            "status": status,
+            "message": message,
             "fallbacks_active": {
                 "llm": False,
                 "neo4j": neo4j_fallback
@@ -768,16 +794,24 @@ def run_react_agent(patient: PatientInput, initial_ddi: dict, initial_guidelines
         return res
 
 
-def _unavailable_response(initial_ddi: dict, guidelines: List[str], neo4j_fallback: bool) -> Dict[str, Any]:
+def _unavailable_response(initial_ddi: dict, guidelines: List[Any], neo4j_fallback: bool) -> Dict[str, Any]:
     """Service errors must not be converted into simulated diagnoses."""
+    citations = _build_citations(guidelines)
+    status, message = _response_status_and_message(guidelines, initial_ddi, {"status": "error"})
+    if guidelines:
+        status = "error"
+        message = "The clinical reasoning service is unavailable. Please try again."
     return {
         "diagnoses": [],
+        "citations": citations,
+        "retrieved_sources": citations,
         "drug_interactions": initial_ddi.get("drug_interactions", []),
         "critical_flag": bool(initial_ddi.get("critical_interaction_flag")),
         "iterations_taken": 0, "citation_warnings_flagged": False,
         "recommended_workup": [], "trace_steps": [],
-        "status": "unavailable",
-        "message": "The clinical reasoning service is unavailable. Please try again.",
+        "interaction_check": _interaction_contract(initial_ddi),
+        "status": status,
+        "message": message,
         "rag_status": "found" if guidelines else "no_results",
         "rag_message": None if guidelines else NO_RAG_RESULTS_MESSAGE,
         "fallbacks_active": {"llm": False, "neo4j": neo4j_fallback},

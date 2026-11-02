@@ -56,7 +56,7 @@ def test_empty_retrieval_does_not_create_a_random_diagnosis():
 
     assert result["diagnoses"] == []
     assert result["rag_status"] == "no_results"
-    assert "No relevant clinical guideline" in result["rag_message"]
+    assert result["rag_message"] == "No supporting information was found in the indexed guidelines for this presentation."
 
 
 def test_citation_verifier_does_not_accept_generic_word_overlap():

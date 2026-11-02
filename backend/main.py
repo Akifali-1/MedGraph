@@ -72,23 +72,24 @@ async def lifespan(app: FastAPI):
             get_gemini_chat
         )
         
-        # 1. Redis fail-fast check
-        try:
-            redis_client = get_redis_client()
-            redis_client.ping()
-            log.info("lifespan_startup_redis_connected")
-        except Exception as e:
-            import os
-            if Config.MOCK_REDIS:
-                log.warning("lifespan_startup_redis_fallback_warning", error=str(e))
-            else:
+        # 1. Redis check. Explicit mock mode must not attempt a socket call.
+        if Config.MOCK_REDIS:
+            log.info("lifespan_startup_redis_mock_mode")
+        else:
+            try:
+                redis_client = get_redis_client()
+                redis_client.ping()
+                log.info("lifespan_startup_redis_connected")
+            except Exception as e:
                 log.warning("lifespan_startup_redis_unavailable", error=str(e))
         
         # 2. Neo4j connection verification
         neo4j_client = get_neo4j_client()
-        if not neo4j_client.use_mock:
+        if not neo4j_client.use_mock and neo4j_client.available and neo4j_client.driver:
             neo4j_client.driver.verify_connectivity()
             log.info("lifespan_startup_neo4j_connected")
+        elif not neo4j_client.use_mock:
+            log.warning("lifespan_startup_neo4j_unavailable", error=neo4j_client.error or "connection unavailable")
         else:
             log.info("lifespan_startup_neo4j_mock_mode")
             
@@ -97,7 +98,7 @@ async def lifespan(app: FastAPI):
         log.info("lifespan_startup_embeddings_ready")
         
         # 4. Pinecone index singleton
-        _ = get_pinecone_index()
+        _ = get_pinecone_index(allow_create=False)
         log.info("lifespan_startup_pinecone_ready")
         
         # 5. Gemini Chat singleton
@@ -106,8 +107,8 @@ async def lifespan(app: FastAPI):
         
     except Exception as e:
         log.error("lifespan_startup_failed", error=str(e))
-        # Raising RuntimeError to fail-fast on startup configuration errors
-        raise RuntimeError(f"Startup check failed: {e}")
+        # Dependency failures are surfaced by /health and diagnosis response
+        # statuses; they must not prevent the API from reporting availability.
         
     yield
     
@@ -410,7 +411,7 @@ def diagnose(
         
         # Step 2: Fetch baseline Graph & Guidelines context (Option A: RA-ReAct)
         from backend.graph.tools import query_knowledge_graph
-        from backend.retrieval.retriever import get_relevant_guidelines, build_clinical_query
+        from backend.retrieval.retriever import get_relevant_guideline_documents, build_clinical_query
         
         initial_ddi = query_knowledge_graph.invoke({
             "patient_medications": resolved_patient.medications,
@@ -419,7 +420,7 @@ def diagnose(
         })
         
         query_text = build_clinical_query(resolved_patient)
-        initial_guidelines = get_relevant_guidelines(query_text, top_n=5, doctor_id=doctor_id)
+        initial_guidelines = get_relevant_guideline_documents(query_text, top_n=5, doctor_id=doctor_id)
         
         # Step 3: Invoke the custom ReAct agent graph
         from backend.agents.react_agent import run_react_agent

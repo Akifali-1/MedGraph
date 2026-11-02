@@ -104,3 +104,5 @@ The dense retrieval initialization was changed to open the existing Pinecone ind
 - First command: live `eval/run_eval.py --date 2026-11-03-live --diagnosis-only` with the default 120-second Gemini timeout.
 - First result: **FAIL** — the harness command exceeded 600 seconds before the script wrote output. Ports were free and no process remained; no partial result files were produced.
 - Fix before retry: make the Gemini request timeout configurable and use a bounded 30-second timeout for the live evaluation process. The evaluator keeps 15.5 seconds between requests and stops when errors exceed 20 percent.
+- Second command: same live run with `GEMINI_REQUEST_TIMEOUT=30`.
+- Second result: **FAIL** — the harness command exceeded 360 seconds before output because application-level `status="error"` responses were HTTP 200 and were not counted toward the stop rule. The evaluator was corrected to count application errors; no process or result files remained.

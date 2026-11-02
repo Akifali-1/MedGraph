@@ -157,7 +157,11 @@ def run_case_set(
         )
         last_request = time.monotonic()
         results.append(sanitize_result(case, status_code, result, latency_ms, error))
-        errors = sum(1 for item in results if item["error"] or item["status_code"] >= 400)
+        errors = sum(
+            1
+            for item in results
+            if item["error"] or item["status_code"] >= 400 or item.get("status") == "error"
+        )
         if errors / max(total_cases, 1) > 0.20:
             break
     return results
@@ -167,7 +171,10 @@ def build_summary(results: list[dict[str, Any]], diagnosis_cases: list[dict[str,
     by_id = {item["id"]: item for item in results}
     diagnosis_results = [by_id[case["id"]] for case in diagnosis_cases if case["id"] in by_id]
     control_results = [by_id[case["id"]] for case in controls if case["id"] in by_id]
-    valid_diagnosis = [item for item in diagnosis_results if not item["error"] and item["status_code"] < 400]
+    valid_diagnosis = [
+        item for item in diagnosis_results
+        if not item["error"] and item["status_code"] < 400 and item.get("status") != "error"
+    ]
     no_evidence_controls = [item for item in control_results if item.get("status") == "no_evidence"]
     citation_total = 0
     citation_resolved = 0
@@ -223,7 +230,11 @@ def build_summary(results: list[dict[str, Any]], diagnosis_cases: list[dict[str,
         "diagnosis_latency_ms": {"p50": percentile(latency_values, 0.50), "p95": percentile(latency_values, 0.95)},
         "gemini_calls_used": 0 if offline else "not measured",
         "errors": {
-            "count": sum(1 for item in results if item["error"] or item["status_code"] >= 400),
+            "count": sum(
+                1
+                for item in results
+                if item["error"] or item["status_code"] >= 400 or item.get("status") == "error"
+            ),
             "reasons": sorted({item["error"] for item in results if item["error"]}),
         },
         "provenance": {

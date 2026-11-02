@@ -159,3 +159,11 @@ The dense retrieval initialization was changed to open the existing Pinecone ind
 - G4 command: `docker build --progress=plain -t medgraph-phase3 .` — **PASS**; only the two existing `FromAsCasing` warnings.
 - A prior full-test failure caused by test-module environment ordering was fixed by setting `MEDGRAPH_DEMO_MODE=true` inside each explicit offline flow test; the rerun passed 23 tests.
 - G5/G6 final repository and process checks remain after the requested backend/frontend startup.
+
+### Final startup requested by user
+
+- Backend command: `python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000`, started by this session with explicit `MOCK_NEO4J=true`, `MOCK_REDIS=true`, `DISABLE_SAGEMAKER=true`; result: **PASS**, `http://127.0.0.1:8000` is listening.
+- Frontend command: `npm run dev -- --host 127.0.0.1`; result: **PASS**, Vite is listening at `http://127.0.0.1:5173/`.
+- The backend is running with explicit mock Neo4j for the requested local UI startup; the live Neo4j/Gemini verification was completed separately above.
+- Final status: **BLOCKED/UNRESOLVED** for a fully clean worktree. An untracked `scripts/sync_github_secrets.py` appeared during the session and was not created, staged, inspected for modification, moved, or deleted because it is user-owned work and its purpose involves secret synchronization. It remains untouched.
+- Final process check: **PASS** for this session's backend/frontend processes; ports `8000=IN_USE` and `5173=IN_USE` as requested. No other MedGraph uvicorn/Vite process was started by this session.

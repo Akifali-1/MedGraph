@@ -91,5 +91,5 @@ def test_diagnosis_marks_interaction_check_unavailable(monkeypatch):
         doctor_id="phase1-test",
     )
 
-    assert result["interaction_check"] == "unavailable"
+    assert result["interaction_check"] == {"status": "unavailable", "interactions": []}
     assert result["drug_interactions"] == []

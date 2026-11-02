@@ -20,7 +20,7 @@ def query_knowledge_graph(patient_medications: list, patient_symptoms: list, doc
             "drug_interactions": [],
             "probable_diseases": [],
             "critical_interaction_flag": False,
-            "interaction_check": "unavailable",
+            "interaction_check": {"status": "unavailable", "interactions": []},
             "graph_check": "unavailable",
         }
     
@@ -36,7 +36,7 @@ def query_knowledge_graph(patient_medications: list, patient_symptoms: list, doc
     return {
         "drug_interactions": interactions,
         "probable_diseases": diseases,
-        "critical_interaction_flag": has_critical
-        ,"interaction_check": "available"
-        ,"graph_check": "available"
+        "critical_interaction_flag": has_critical,
+        "interaction_check": {"status": "ok", "interactions": interactions},
+        "graph_check": "available"
     }

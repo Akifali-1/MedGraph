@@ -186,8 +186,16 @@ def load_and_chunk_guidelines() -> List[Document]:
             guidelines_text = f.read()
         guidelines_docs = splitter.create_documents(
             texts=[guidelines_text],
-            metadatas=[{"source": "AHA_ACC_Guideline"}]
+            metadatas=[{
+                "source": "AHA_ACC_Guideline",
+                "source_type": "guideline",
+                "source_id": "AHA_ACC_2021_2022",
+                "title": "AHA/ACC clinical practice guidelines",
+                "url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029",
+            }]
         )
+        for index, doc in enumerate(guidelines_docs, start=1):
+            doc.metadata["chunk_id"] = f"aha-acc-{index}"
         all_docs.extend(guidelines_docs)
         logger.info(f"Loaded {len(guidelines_docs)} clinical guidelines chunks.")
     else:
@@ -199,8 +207,16 @@ def load_and_chunk_guidelines() -> List[Document]:
             abstracts_text = f.read()
         abstracts_docs = splitter.create_documents(
             texts=[abstracts_text],
-            metadatas=[{"source": "PubMed_Abstract"}]
+            metadatas=[{
+                "source": "PubMed_Abstract",
+                "source_type": "pubmed",
+                "source_id": "local-pubmed-abstracts",
+                "title": "Indexed PubMed abstracts",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/",
+            }]
         )
+        for index, doc in enumerate(abstracts_docs, start=1):
+            doc.metadata["chunk_id"] = f"pubmed-{index}"
         all_docs.extend(abstracts_docs)
         logger.info(f"Loaded {len(abstracts_docs)} PubMed abstract chunks.")
     else:
@@ -320,8 +336,8 @@ def setup_retriever(doctor_id: str = None):
     _retrievers_cache[cache_key] = hybrid_retriever
     return hybrid_retriever
 
-def get_relevant_guidelines(query: str, top_n: int = 5, doctor_id: str = None) -> List[str]:
-    """Retrieves and reranks relevant guidelines for a given query."""
+def get_relevant_guideline_documents(query: str, top_n: int = 5, doctor_id: str = None) -> List[Document]:
+    """Retrieves source documents while preserving citation metadata."""
     query = (query or "").strip()
     try:
         top_n = int(top_n)
@@ -379,7 +395,7 @@ def get_relevant_guidelines(query: str, top_n: int = 5, doctor_id: str = None) -
             
             reranked_docs = []
             for r in rerank_results.results:
-                reranked_docs.append(raw_docs[r.index].page_content)
+                reranked_docs.append(raw_docs[r.index])
             
             logger.info(f"Cohere Rerank completed. Retrieved {len(reranked_docs)} documents.")
             return reranked_docs
@@ -387,7 +403,15 @@ def get_relevant_guidelines(query: str, top_n: int = 5, doctor_id: str = None) -
             logger.warning(f"Cohere Reranking failed: {e}. Falling back to default retriever order.")
             
     # Standard Fallback: return top_n raw docs
-    return [d.page_content for d in raw_docs[:top_n]]
+    return raw_docs[:top_n]
+
+
+def get_relevant_guidelines(query: str, top_n: int = 5, doctor_id: str = None) -> List[str]:
+    """Backward-compatible text-only retrieval for the ReAct agent."""
+    return [
+        doc.page_content
+        for doc in get_relevant_guideline_documents(query, top_n, doctor_id)
+    ]
 
 
 def clear_retriever_cache(doctor_id: str = None) -> None:

@@ -10,13 +10,75 @@ from langgraph.graph import StateGraph, END
 from backend.config import Config
 from backend.models.patient import PatientInput, ClinicalAnalysis, Diagnosis
 from backend.agents.entity_linker import resolve_clinical_entities
-from backend.retrieval.retriever import get_relevant_guidelines, build_clinical_query
+from backend.retrieval.retriever import (
+    get_relevant_guideline_documents,
+    build_clinical_query,
+)
 from backend.graph.tools import query_knowledge_graph
 from backend.agents.evidence import verify_diagnosis_citations
 
 log = structlog.get_logger()
 
-NO_EVIDENCE_MESSAGE = "No relevant clinical guideline or knowledge-graph evidence was found for this query."
+NO_EVIDENCE_MESSAGE = "No supporting information was found in the indexed guidelines for this presentation."
+
+
+def _citation_from_chunk(chunk: Any, index: int) -> Dict[str, Any]:
+    """Convert retrieved document metadata into the public citation contract."""
+    metadata = getattr(chunk, "metadata", {}) or {}
+    excerpt = str(getattr(chunk, "page_content", chunk) or "").strip()
+    citation_id = str(metadata.get("citation_id") or f"citation-{index}")
+    return {
+        "citation_id": citation_id,
+        "title": str(metadata.get("title") or metadata.get("source") or "Retrieved source"),
+        "source_type": str(metadata.get("source_type") or "guideline"),
+        "source_id": str(metadata.get("source_id") or metadata.get("source") or "unknown"),
+        "chunk_id": str(metadata.get("chunk_id") or f"chunk-{index}"),
+        "excerpt": excerpt[:300],
+        "url": metadata.get("url") or None,
+    }
+
+
+def _build_citations(chunks: List[Any]) -> List[Dict[str, Any]]:
+    return [_citation_from_chunk(chunk, index) for index, chunk in enumerate(chunks, start=1)]
+
+
+def _attach_citation_ids(diagnoses: List[Dict[str, Any]], citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Replace model-generated citation prose with IDs from retrieved metadata."""
+    citation_ids = [citation["citation_id"] for citation in citations]
+    attached = []
+    for diagnosis in diagnoses:
+        requested = diagnosis.get("citation_ids") or diagnosis.get("citations") or []
+        valid_requested = [item for item in requested if item in citation_ids]
+        ids = valid_requested or citation_ids[: min(2, len(citation_ids))]
+        attached.append({**diagnosis, "citation_ids": ids, "citations": ids})
+    return attached
+
+
+def _interaction_contract(graph_results: Dict[str, Any]) -> Dict[str, Any]:
+    value = graph_results.get("interaction_check")
+    if isinstance(value, dict):
+        return {
+            "status": value.get("status", "unavailable"),
+            "interactions": value.get("interactions", []),
+        }
+    if value == "unavailable" or graph_results.get("graph_check") == "unavailable":
+        return {"status": "unavailable", "interactions": []}
+    interactions = graph_results.get("drug_interactions", [])
+    return {"status": "ok", "interactions": interactions}
+
+
+def _response_status_and_message(
+    rag_chunks: List[Any],
+    graph_results: Dict[str, Any],
+    reasoning_output: Optional[Dict[str, Any]] = None,
+) -> tuple[str, str]:
+    if not rag_chunks:
+        return "no_evidence", NO_EVIDENCE_MESSAGE
+    if _interaction_contract(graph_results)["status"] == "unavailable":
+        return "graph_unavailable", "The interaction check could not run."
+    if reasoning_output and reasoning_output.get("status") == "error":
+        return "error", str(reasoning_output.get("message") or "The clinical reasoning service returned an error.")
+    return "ok", "Supporting information was found in the indexed guidelines."
 
 # State Definition
 class AgentState(TypedDict):
@@ -76,7 +138,7 @@ def rag_node(state: AgentState) -> Dict[str, Any]:
         query = build_clinical_query(patient)
         log.info("rag_node_initial_query", request_id=request_id, query=query)
         
-    chunks = get_relevant_guidelines(query, top_n=5, doctor_id=state.get("doctor_id"))
+    chunks = get_relevant_guideline_documents(query, top_n=5, doctor_id=state.get("doctor_id"))
     log.info("rag_node_completed", request_id=request_id, chunks_retrieved=len(chunks))
     return {"rag_chunks": chunks}
 
@@ -106,7 +168,10 @@ def graph_node(state: AgentState) -> Dict[str, Any]:
 def aggregator_node(state: AgentState) -> Dict[str, Any]:
     request_id = state.get("request_id", "unknown")
     log.info("aggregator_node_start", request_id=request_id)
-    rag_text = "\n\n".join([f"- Chunk {i+1}: {chunk}" for i, chunk in enumerate(state["rag_chunks"])])
+    rag_text = "\n\n".join([
+        f"- Chunk {i+1}: {getattr(chunk, 'page_content', chunk)}"
+        for i, chunk in enumerate(state["rag_chunks"])
+    ])
     if not rag_text:
         rag_text = NO_EVIDENCE_MESSAGE
     
@@ -125,12 +190,9 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
     patient = state["patient_data"]
     context = state["aggregated_context"]
 
-    if not state["rag_chunks"] and not (
-        state["graph_results"].get("probable_diseases")
-        or state["graph_results"].get("drug_interactions")
-    ):
+    if not state["rag_chunks"]:
         data = {"diagnoses": [], "recommended_workup": [],
-                "status": "no_results", "message": NO_EVIDENCE_MESSAGE}
+                "status": "no_evidence", "message": NO_EVIDENCE_MESSAGE}
         return {"diagnoses": [], "confidence": 0.0,
                 "query_refinement": "", "final_output": data}
     
@@ -140,7 +202,7 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
         "and specific citations. Respond ONLY in valid JSON format matching this structure:\n"
         "{\n"
         "  \"diagnoses\": [\n"
-        "    {\"name\": \"Diagnosis Name\", \"confidence\": 0.85, \"evidence\": \"Why this diagnosis\", \"citations\": [\"Guideline X\"]}\n"
+        "    {\"name\": \"Diagnosis Name\", \"confidence\": 0.85, \"evidence\": \"Why this diagnosis\", \"citations\": [\"citation-1\"]}\n"
         "  ],\n"
         "  \"top_confidence\": 0.85,\n"
         "  \"recommended_workup\": [\"Test A\", \"Test B\"],\n"
@@ -294,10 +356,7 @@ def reasoning_node(state: AgentState) -> Dict[str, Any]:
     recommended = []
     refinement = "atypical chest pain etiology"
 
-    if not state["rag_chunks"] and not (
-        state["graph_results"].get("probable_diseases")
-        or state["graph_results"].get("drug_interactions")
-    ):
+    if not state["rag_chunks"]:
         mock_res = {
             "diagnoses": [],
             "top_confidence": 0.0,
@@ -384,7 +443,8 @@ def veracity_checker_node(state: AgentState) -> Dict[str, Any]:
     diagnoses = state["diagnoses"]
     rag_chunks = state["rag_chunks"]
     
-    verified_diagnoses, citation_warnings = verify_diagnosis_citations(diagnoses, rag_chunks)
+    rag_text = [getattr(chunk, "page_content", chunk) for chunk in rag_chunks]
+    verified_diagnoses, citation_warnings = verify_diagnosis_citations(diagnoses, rag_text)
         
     log.info("veracity_checker_node_completed", request_id=request_id, citation_warnings_present=citation_warnings)
     return {
@@ -397,25 +457,32 @@ def output_node(state: AgentState) -> Dict[str, Any]:
     request_id = state.get("request_id", "unknown")
     log.info("output_node_start", request_id=request_id)
     
-    final_diagnoses = state["diagnoses"]
+    citations = _build_citations(state.get("rag_chunks", []))
+    final_diagnoses = _attach_citation_ids(state["diagnoses"], citations)
     graph_res = state["graph_results"]
-    
+    reasoning_output = state.get("final_output") or {}
+    status, message = _response_status_and_message(
+        state.get("rag_chunks", []), graph_res, reasoning_output
+    )
+    if status == "no_evidence":
+        final_diagnoses = []
+
     final_output = {
         "diagnoses": final_diagnoses,
+        "citations": citations,
+        "retrieved_sources": citations,
         "drug_interactions": graph_res.get("drug_interactions", []),
         "critical_flag": state["drug_interaction_flag"],
         "iterations_taken": state["iteration"],
         "citation_warnings_flagged": state["citation_warnings_present"],
         "recommended_workup": state.get("final_output", {}).get("recommended_workup", []),
         "rag_status": "found" if state.get("rag_chunks") else "no_results",
-        "rag_message": None if state.get("rag_chunks") else NO_EVIDENCE_MESSAGE
-        ,"interaction_check": graph_res.get("interaction_check", "available")
-        ,"data_mode": state.get("data_mode", "live")
+        "rag_message": None if state.get("rag_chunks") else NO_EVIDENCE_MESSAGE,
+        "interaction_check": _interaction_contract(graph_res),
+        "status": status,
+        "message": message,
+        "data_mode": state.get("data_mode", "live")
     }
-    reasoning_output = state.get("final_output") or {}
-    if reasoning_output.get("status"):
-        final_output["status"] = reasoning_output["status"]
-        final_output["message"] = reasoning_output.get("message")
     
     log.info("output_node_completed", request_id=request_id)
     return {"final_output": final_output}
@@ -426,21 +493,41 @@ def alert_node(state: AgentState) -> Dict[str, Any]:
     log.warning("alert_node_start", request_id=request_id)
     graph_res = state["graph_results"]
     
-    # High-priority bypass packet
-    alert_output = {
-        "alert": "CRITICAL DRUG INTERACTION DETECTED",
-        "requires_immediate_intervention": True,
-        "drug_interactions": graph_res.get("drug_interactions", []),
-        "diagnoses": [
+    interactions = graph_res.get("drug_interactions", [])
+    interaction_text = "; ".join(
+        f"{item.get('dr1', 'Unknown drug')} + {item.get('dr2', 'Unknown drug')}: "
+        f"{item.get('effect', 'interaction reported')} (severity: {item.get('severity', 'unspecified')})"
+        for item in interactions
+    )
+    citations = _build_citations(state.get("rag_chunks", []))
+    status, message = _response_status_and_message(
+        state.get("rag_chunks", []), graph_res, state.get("final_output") or {}
+    )
+    alert_diagnoses = []
+    if status != "no_evidence":
+        alert_diagnoses = _attach_citation_ids([
             {
                 "name": "Medication Interaction Hazard",
                 "confidence": 1.0,
-                "evidence": f"Patient is concurrently taking interacting medications: {', '.join([f'{i.get('dr1')} + {i.get('dr2')} ({i.get('effect')})' for i in graph_res.get('drug_interactions', [])])}",
-                "citations": ["AHA/ACC Antithrombotic Guidelines: Guideline 10"]
+                "evidence": interaction_text or "A high-severity interaction was returned by the graph.",
+                "citations": [],
             }
-        ],
+        ], citations)
+
+    alert_output = {
+        "alert": f"Critical drug interaction detected: {interaction_text or 'the graph returned a high-severity interaction.'}",
+        "requires_immediate_intervention": True,
+        "drug_interactions": interactions,
+        "diagnoses": alert_diagnoses,
+        "citations": citations,
+        "retrieved_sources": citations,
         "citation_warnings_flagged": False,
-        "recommended_workup": ["Immediate coagulation profile (PT/INR) check", "Review anticoagulant indication", "Evaluate signs of active bleeding"]
+        "recommended_workup": ["Review the returned interaction with the prescribing clinician."],
+        "interaction_check": _interaction_contract(graph_res),
+        "critical_flag": True,
+        "status": status,
+        "message": message,
+        "data_mode": state.get("data_mode", "live")
     }
     
     log.info("alert_node_completed", request_id=request_id)
@@ -448,12 +535,9 @@ def alert_node(state: AgentState) -> Dict[str, Any]:
 
 # Routing Functions
 def route_after_graph(state: AgentState) -> str:
-    """Route: if high interaction flagged, jump immediately to alert node."""
+    """Always retrieve evidence before compiling an interaction alert."""
     request_id = state.get("request_id", "unknown")
-    if state["drug_interaction_flag"]:
-        log.warning("graph_route_alert_early", request_id=request_id)
-        return "alert_early"
-    log.info("graph_route_normal", request_id=request_id)
+    log.info("graph_route_to_retrieval", request_id=request_id)
     return "aggregator"
 
 def route_after_reasoning(state: AgentState) -> str:
@@ -505,7 +589,7 @@ def build_agent_graph():
         "graph",
         route_after_graph,
         {
-            "alert_early": "alert",
+            "alert_early": "rag",
             "aggregator": "rag"
         }
     )

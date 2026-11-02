@@ -59,6 +59,15 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - Added ten provisional cases to `eval/review/review_sample.csv`.
 - Added dataset definitions, label provenance, metric definitions, limits, and all case-report URLs to `eval/README.md`.
 
+## Phase 4 / backend contract
+
+- Retrieval now preserves title, source type, source ID, chunk ID, excerpt, and URL metadata from local guideline chunks.
+- DAG responses now expose `status` (`ok`, `no_evidence`, `graph_unavailable`, or `error`), a plain-sentence `message`, structured `citations`, `retrieved_sources`, and `interaction_check: {status, interactions}`.
+- The exact no-evidence message is `No supporting information was found in the indexed guidelines for this presentation.` Diagnoses are empty when no retrieved chunk passes the retrieval boundary; graph interaction lookups remain present.
+- Graph-unavailable responses use `interaction_check.status=unavailable` and the message `The interaction check could not run.`
+- Critical alert text is built from the returned interaction pair/effect/severity rather than a fixed drug pair.
+- Added regression tests in `backend/tests/test_phase2_contract.py`; focused suite: **13 passed**, 1 dependency deprecation warning.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

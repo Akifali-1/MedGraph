@@ -49,6 +49,16 @@ The graph dump succeeded, so the Phase 1 rollback record exists. Gemini is block
 - Removed the two hard-coded `TREATED_BY` seed statements from `backend/graph/seed.py` because no verified Phase 2 source supports those treatment edges.
 - No live graph mutation was needed for this change; the Phase 0 graph already had `TREATED_BY=0`.
 
+## Phase 2 — evaluation set
+
+### 2a–2e diagnosis, interaction, controls, and review sample
+
+- Added `eval/cases/diagnosis.jsonl` with 20 open-access, source-linked, paraphrased case reports. Every label is `provisional`; the set meets the minimum of 20 but is below the target of 40, so diagnosis evaluation is **underpowered**.
+- Added `eval/cases/interactions.jsonl` as an empty blocked set. The selected DDInter download could not be retrieved or schema-verified after three timeouts, so no interaction positives, absence-based negatives, or synonym mappings were invented. Interaction evaluation is **BLOCKED**.
+- Added eight explicitly synthetic negative controls in `eval/cases/controls.jsonl` (five unrelated presentations and three empty/near-empty inputs). They are boundary tests only, not clinical cases.
+- Added ten provisional cases to `eval/review/review_sample.csv`.
+- Added dataset definitions, label provenance, metric definitions, limits, and all case-report URLs to `eval/README.md`.
+
 ## Decisions
 
 - If a source cannot be redistributed under a clear license, the repository will contain a downloader/loader and provenance documentation, not the dataset.

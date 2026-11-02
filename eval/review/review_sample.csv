@@ -1,0 +1,11 @@
+id,vignette,gold_diagnosis,label_status
+dx-001,"A 41-year-old woman had pleuritic chest pain and migratory pleural effusions before pulmonary angiography identified an embolus.",Pulmonary embolism,provisional
+dx-003,"A 5-year-old boy had progressive dyspnea and a CSF2RA variant associated with abnormal alveolar surfactant accumulation.",Pulmonary alveolar proteinosis,provisional
+dx-004,"A 13-year-old boy had a large cervical swelling and biopsy findings of emperipolesis with S100-positive histiocytes.",Rosai-Dorfman disease,provisional
+dx-006,"A 50-day-old boy had persistent diarrhea, vomiting, bloating, and failure to thrive that improved with specialized fatty acids.",Chylomicron retention disease,provisional
+dx-009,"An adult man had recurrent neuropsychiatric symptoms after streptococcal infections and was treated with plasma exchange and rituximab.",PANDAS,provisional
+dx-010,"A 58-year-old man had persistent fever, hip pain, salmon-colored rash, extreme ferritin elevation, and systemic inflammation.",Adult-onset Still disease,provisional
+dx-012,"A woman developed fever, chest and abdominal symptoms, rash, hypotension, and cardiac involvement weeks after COVID-19.",Multisystem inflammatory syndrome in adults,provisional
+dx-016,"A woman with progressive brainstem symptoms had positive CSF JC-virus PCR after an initial multiple-sclerosis diagnosis.",Brainstem progressive multifocal leukoencephalopathy,provisional
+dx-018,"A young woman with PCOS had persistent thoracic back pain followed by dynamic ECG and troponin changes and critical LAD disease.",Myocardial infarction,provisional
+dx-020,"A man with epigastric pain later developed leg weakness, sensory loss, and urinary retention; MRI showed an anterior spinal artery lesion.",Anterior spinal artery syndrome,provisional

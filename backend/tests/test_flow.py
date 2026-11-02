@@ -25,6 +25,7 @@ def test_critical_drug_interaction():
     Primary: react mode — should trigger critical DDI flag + trace_steps.
     Secondary: dag mode legacy check.
     """
+    os.environ["MEDGRAPH_DEMO_MODE"] = "true"
     for mode in ["react", "dag"]:  # react is primary
         logger.info(f"\n--- TEST CASE 1: Warfarin + Aspirin | Mode: {mode} (Expected: Early Alert Exit) ---")
         
@@ -65,6 +66,7 @@ def test_cardiac_differential():
     Test Case 2: "65M, chest pain, jaw pain, sweating"
     No interacting meds. Primary (react) should output cardiac diagnoses with trace_steps.
     """
+    os.environ["MEDGRAPH_DEMO_MODE"] = "true"
     for mode in ["react", "dag"]:  # react is primary
         logger.info(f"\n--- TEST CASE 2: Cardiac Symptoms | Mode: {mode} (Expected: STEMI & Unstable Angina) ---")
         
@@ -106,6 +108,7 @@ def test_neurological_differential():
     Test Case 3: "54F, headache, confusion"
     Expected: Intracranial Hemorrhage. Primary (react) must include trace_steps.
     """
+    os.environ["MEDGRAPH_DEMO_MODE"] = "true"
     for mode in ["react", "dag"]:  # react is primary
         logger.info(f"\n--- TEST CASE 3: Neurological Symptoms | Mode: {mode} (Expected: Intracranial Hemorrhage) ---")
         

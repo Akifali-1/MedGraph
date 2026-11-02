@@ -150,3 +150,12 @@ The dense retrieval initialization was changed to open the existing Pinecone ind
 - Result: **PASS**. About data changed from offline summary `eval/results/2026-11-02/summary.json` to live summary `eval/results/2026-11-03-live/summary.json`. Diff records live `0/4` top-1/top-3, Wilson interval `[0.0, 0.4899]`, p50 `1829.83 ms`, p95 `2611.97 ms`, 5 errors, and blocked interaction metrics.
 - `eval/review/review_sample.csv` was not changed.
 - Edited-file scan for prohibited phrases: **PASS**; no `zero-hallucination` or `production-ready` text was added.
+
+## Phase G — final checks
+
+- G1 command: `.\.venv\Scripts\python.exe -m pytest backend/tests -q` — **PASS**, 23 passed, 2 warnings.
+- G2 command: `.\.venv\Scripts\python.exe backend/tests/test_flow.py` — **PASS**, all integration tests completed successfully.
+- G3 commands: `frontend/npm run build` and `frontend/npm run lint` — **PASS**.
+- G4 command: `docker build --progress=plain -t medgraph-phase3 .` — **PASS**; only the two existing `FromAsCasing` warnings.
+- A prior full-test failure caused by test-module environment ordering was fixed by setting `MEDGRAPH_DEMO_MODE=true` inside each explicit offline flow test; the rerun passed 23 tests.
+- G5/G6 final repository and process checks remain after the requested backend/frontend startup.

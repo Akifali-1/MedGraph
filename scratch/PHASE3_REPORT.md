@@ -106,3 +106,18 @@ The dense retrieval initialization was changed to open the existing Pinecone ind
 - Fix before retry: make the Gemini request timeout configurable and use a bounded 30-second timeout for the live evaluation process. The evaluator keeps 15.5 seconds between requests and stops when errors exceed 20 percent.
 - Second command: same live run with `GEMINI_REQUEST_TIMEOUT=30`.
 - Second result: **FAIL** — the harness command exceeded 360 seconds before output because application-level `status="error"` responses were HTTP 200 and were not counted toward the stop rule. The evaluator was corrected to count application errors; no process or result files remained.
+
+### C1–C2 — final live run and stop rule
+
+- Final command: live `eval/run_eval.py --date 2026-11-03-live --diagnosis-only` with `GEMINI_REQUEST_TIMEOUT=30`, `MEDGRAPH_SKIP_USER_UPLOAD_RETRIEVAL=true`, mock Neo4j off, mock Redis on, and 15.5-second request pacing.
+- Result: **PASS with bounded stop**. Nine of 20 diagnosis cases were attempted; five returned application-level `status="error"`, so the run stopped at 25 percent of the target case set, above the 20 percent stop threshold. The server was terminated and ports were free.
+- Raw results: `eval/results/2026-11-03-live/results.jsonl`. Secret scan: **PASS**; no API-key patterns, secret variable names, or process-only auth secret appeared.
+
+### C3–C5 — live metrics
+
+- Diagnosis matching: top-1 `0/4`, Wilson 95% interval `[0.0, 0.4899]`; top-3 `0/4`, Wilson 95% interval `[0.0, 0.4899]`. Matching is string-based against `gold_synonyms`; only four non-error responses were included in `n`.
+- Live diagnosis latency for non-error responses: p50 `1829.83 ms`, p95 `2611.97 ms`.
+- Live controls were not included in the diagnosis-only run. The live retriever control boundary from B2 was `3/8` no-evidence (`37.5%`), with five controls retrieving above threshold.
+- Citation resolution in live raw results: `12/12`; this checks ID resolution only, not claim validity.
+- Live summary: `eval/results/2026-11-03-live/summary.md` and `summary.json`. The prior offline results remain separately labeled under `eval/results/2026-11-02/`.
+- Gemini call count: **not measured**. Interaction metrics and brand/synonym mapping remain **BLOCKED** because DDInter data is unavailable.

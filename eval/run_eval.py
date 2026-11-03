@@ -111,13 +111,6 @@ def login_for_live_eval(base_url: str) -> str:
 
 
 def sanitize_result(case: dict[str, Any], status_code: int, result: dict[str, Any], latency_ms: float, error: str | None) -> dict[str, Any]:
-    error_reasons = set()
-    for item in results:
-        if item["error"]:
-            error_reasons.add(item["error"])
-        elif item.get("status") == "error":
-            error_reasons.add(str(item.get("message") or "application error"))
-
     return {
         "id": case["id"],
         "kind": "diagnosis" if case["id"].startswith("dx-") else "control",
@@ -217,6 +210,13 @@ def build_summary(results: list[dict[str, Any]], diagnosis_cases: list[dict[str,
         }
 
     latency_values = [item["total_latency_ms"] for item in valid_diagnosis]
+    error_reasons = {
+        item["error"]
+        if item["error"]
+        else str(item.get("message") or "application error")
+        for item in results
+        if item["error"] or item["status_code"] >= 400 or item.get("status") == "error"
+    }
     return {
         "run_mode": "offline" if offline else "live",
         "diagnosis_cases": len(diagnosis_cases),

@@ -7,8 +7,8 @@
   "citation_resolution": {
     "note": "deterministic ID-set resolution; does not verify the cited claim",
     "rate": 1.0,
-    "resolved": 12,
-    "total": 12
+    "resolved": 32,
+    "total": 32
   },
   "controls": {
     "n": 0,
@@ -16,31 +16,31 @@
     "rate": null
   },
   "diagnosis_cases": 20,
-  "diagnosis_cases_evaluated": 4,
+  "diagnosis_cases_evaluated": 18,
   "diagnosis_latency_ms": {
-    "p50": 1829.83,
-    "p95": 2611.97
+    "p50": 5425.1,
+    "p95": 23881.87
   },
   "diagnosis_metric": {
     "top1": {
-      "correct": 0,
-      "n": 4,
+      "correct": 1,
+      "n": 18,
       "wilson_95": [
-        0.0,
-        0.4899
+        0.0099,
+        0.2576
       ]
     },
     "top3": {
-      "correct": 0,
-      "n": 4,
+      "correct": 1,
+      "n": 18,
       "wilson_95": [
-        0.0,
-        0.4899
+        0.0099,
+        0.2576
       ]
     }
   },
   "errors": {
-    "count": 5,
+    "count": 2,
     "reasons": [
       "The clinical reasoning service is unavailable. Please try again."
     ]
@@ -57,5 +57,5 @@
     "synthetic_controls": true
   },
   "run_mode": "live",
-  "summary_path": "eval/results/2026-11-03-live/summary.json"
+  "summary_path": "eval/results/2026-11-03-resumed/summary.json"
 }

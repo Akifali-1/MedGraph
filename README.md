@@ -193,7 +193,7 @@ This is an optional deployment workflow and was not used for the Phase 2 evidenc
 - [Evaluation set and metric definitions](eval/README.md)
 - [Data sources, licenses, and access notes](docs/DATA_SOURCES.md)
 
-The current interaction data source is `synthetic-demo`; DDInter 2.0 (CC BY-NC-SA 4.0) remains the selected source but its CSV was unavailable, so the graph was not replaced. Demo interaction alerts are labeled accordingly. The latest run contains 20 provisional diagnosis cases and eight synthetic boundary controls. Live diagnosis evaluation stopped when provider errors exceeded 20 percent; interaction metrics remain blocked. See the summaries for measured control, latency, and citation-resolution checks.
+The current interaction data source is `synthetic-demo`; DDInter 2.0 (CC BY-NC-SA 4.0) remains the selected source but its CSV was unavailable, so the graph was not replaced. Demo interaction alerts are labeled accordingly. The resumed live diagnosis run attempted all 20 provisional cases: 18 completed, 2 returned provider errors, top-1/top-3 were both 1/18, latency p50/p95 was 5425.10/23881.87 ms, and citation resolution was 32/32. Interaction metrics remain blocked. See `eval/results/2026-11-03-resumed/summary.md` for the measured results.
 
 ---
 

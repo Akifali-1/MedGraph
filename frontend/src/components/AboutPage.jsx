@@ -22,6 +22,7 @@ export default function AboutPage({ onHowItWorks, onOpenLibrary, onEnterWorkspac
     : `Top-1 ${evaluation.diagnosis_metric?.top1?.correct ?? 0}/${evaluation.diagnosis_metric?.top1?.n ?? 0}`;
   const controls = evaluation.controls || {};
   const interactionStatus = evaluation.interactions?.status || 'not measured';
+  const runMode = evaluation.run_mode || 'unknown';
 
   return (
     <main className="info-page" aria-labelledby="about-heading">
@@ -97,10 +98,10 @@ export default function AboutPage({ onHowItWorks, onOpenLibrary, onEnterWorkspac
           <h2 id="evaluation-heading">Measured boundaries. <em>Open gaps.</em></h2>
           <div className="info-principles">
             <Metric label="Diagnosis">{evaluation.diagnosis_cases} provisional cases; accuracy {diagnosisMetric}. The case set is underpowered versus the target of 40.</Metric>
-            <Metric label="Controls">{controls.no_evidence ?? 0}/{controls.n ?? 0} synthetic controls returned `no_evidence` in the offline HTTP run.</Metric>
+            <Metric label="Controls">{controls.n ? `${controls.no_evidence ?? 0}/${controls.n} synthetic controls returned no_evidence.` : 'Not included in the latest diagnosis-only run.'}</Metric>
             <Metric label="Interactions">{interactionStatus}. Precision/recall and brand/synonym mapping were not measured.</Metric>
           </div>
-          <p>Latest summary: <code>{evaluation.summary_path || 'eval/results/latest/summary.json'}</code>. The offline run used deterministic test mode; its latency and control results do not establish clinical accuracy.</p>
+          <p>Latest summary: <code>{evaluation.summary_path || 'eval/results/latest/summary.json'}</code>. This was a bounded {runMode} run; the provisional metrics do not establish clinical accuracy.</p>
         </div>
       </section>
 
@@ -108,7 +109,7 @@ export default function AboutPage({ onHowItWorks, onOpenLibrary, onEnterWorkspac
         <div className="info-section-label">05 / LIMITATIONS</div>
         <div className="info-section-body">
           <h2 id="limits-heading">What it does <em>not do.</em></h2>
-          <p>MedGraph has not established clinical validity. The current diagnosis labels are provisional, the interaction source replacement is blocked, and Gemini-dependent evaluation was not measured because the provider/API checks failed. Retrieved citations show the source chunk returned; they do not independently prove the cited claim.</p>
+          <p>MedGraph has not established clinical validity. The current diagnosis labels are provisional, the interaction source replacement is blocked, and the resumed Gemini evaluation included provider errors. Retrieved citations show the source chunk returned; they do not independently prove the cited claim.</p>
           <p className="info-footnote">MedGraph is a research and demonstration prototype, not medical advice. Do not use it as a substitute for a qualified clinician or emergency care.</p>
         </div>
       </section>

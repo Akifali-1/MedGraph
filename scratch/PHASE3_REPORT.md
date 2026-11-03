@@ -166,5 +166,27 @@ The dense retrieval initialization was changed to open the existing Pinecone ind
 - Backend command: `python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000`, started by this session with explicit `MOCK_NEO4J=true`, `MOCK_REDIS=true`, `DISABLE_SAGEMAKER=true`; result: **PASS**, `http://127.0.0.1:8000` is listening.
 - Frontend command: `npm run dev -- --host 127.0.0.1`; result: **PASS**, Vite is listening at `http://127.0.0.1:5173/`.
 - The backend is running with explicit mock Neo4j for the requested local UI startup; the live Neo4j/Gemini verification was completed separately above.
-- Final status: **BLOCKED/UNRESOLVED** for a fully clean worktree. An untracked `scripts/sync_github_secrets.py` appeared during the session and was not created, staged, inspected for modification, moved, or deleted because it is user-owned work and its purpose involves secret synchronization. It remains untouched.
+- Historical note: the previously untracked `scripts/sync_github_secrets.py` was subsequently committed with the keep-alive workflow in `c960840`; it is now tracked. The workflow itself has a user-owned working-tree edit (an extra blank line at EOF) and remains unstaged.
 - Final process check: **PASS** for this session's backend/frontend processes; ports `8000=IN_USE` and `5173=IN_USE` as requested. No other MedGraph uvicorn/Vite process was started by this session.
+
+## Phase 3 resumed later — Neo4j keep-alive follow-up
+
+### Resumption check
+
+- Workflow inspected: `.github/workflows/neo4j-keepalive.yml`.
+- Schedule: every two days at `06:00 UTC` via `0 6 */2 * *`; `workflow_dispatch` is also available for a manual run.
+- Secret handling: the workflow reads `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` from GitHub Actions secrets and performs only `RETURN 1`; it does not write to Neo4j.
+- Workflow YAML validation: **PASS**.
+- Local equivalent keep-alive check: **PASS** (`RETURN 1 AS ok` returned `1`).
+- Live graph read after resumption: **PASS** — `Disease=133`, `Drug=6`, `Symptom=397`, `INDICATES=1854`, `INTERACTS_WITH=24`.
+- DDInter availability recheck: **BLOCKED**. `scratch/data/` still contains no DDInter CSV, so Phase D interaction precision/recall and brand/synonym mapping remain blocked. The keep-alive job addresses Neo4j availability only.
+
+### Resumed Phase C run
+
+- A new bounded live diagnosis evaluation was started in `eval/results/2026-11-03-resumed/` using `MOCK_NEO4J=false`, `MOCK_REDIS=true`, `GEMINI_REQUEST_TIMEOUT=30`, and port `8001`.
+- The first attempt exposed and was stopped by an evaluator defect: `sanitize_result()` referenced an undefined `results` variable. The defect was fixed and committed as `399f542`; the corrected run completed successfully.
+- Corrected run result: **PASS with residual provider errors**. All 20 diagnosis cases were attempted; 18 completed and 2 returned `status="error"` with the clinical reasoning service unavailable message. The stop threshold was not exceeded.
+- Resumed live metrics: top-1 `1/18`, Wilson 95% `[0.0099, 0.2576]`; top-3 `1/18`, Wilson 95% `[0.0099, 0.2576]`; latency p50/p95 `5425.10 / 23881.87 ms`; citation resolution `32/32`; reasoning engines were `gemini` for 18 completed cases and `none` for 2 errors.
+- Secret scan of `eval/results/2026-11-03-resumed/results.jsonl`: **PASS**. No API-key patterns or secret variable names were present.
+- Phase C status after resumption: **PARTIAL**. Provider-backed evaluation is no longer stopped at the 20% rule, but the result remains provisional and interaction evaluation remains blocked by missing DDInter data.
+- Final resumed checks: frontend build **PASS**, frontend lint **PASS**, backend `/health` **PASS** with Neo4j/Pinecone healthy, Redis mock healthy, and SageMaker not configured; resumed JSONL parse **PASS**.

@@ -13,6 +13,7 @@ def sync_secrets():
     script_dir = Path(__file__).resolve().parent
     env_candidates = [
         script_dir.parent / ".env",
+        script_dir.parent / "medgraph" / ".env",
         Path.cwd() / ".env",
         Path.cwd() / "medgraph" / ".env",
     ]

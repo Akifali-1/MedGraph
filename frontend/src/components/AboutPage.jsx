@@ -1,5 +1,11 @@
+import { useRef } from 'react';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useGSAP } from '@gsap/react';
 import { ArrowRight, BookOpen, GitBranch, Layers, ShieldCheck } from 'lucide-react';
 import evaluation from '../data/latest_eval_summary.json';
+
+gsap.registerPlugin(ScrollTrigger, useGSAP);
 
 const PRINCIPLES = [
   { number: '01', title: 'Evidence stays visible', text: 'Returned sources carry their title, type, ID, excerpt, and link into the result.', Icon: BookOpen },
@@ -17,6 +23,8 @@ function Metric({ label, children }) {
 }
 
 export default function AboutPage({ onHowItWorks, onOpenLibrary, onEnterWorkspace }) {
+  const root = useRef(null);
+
   const diagnosisMetric = evaluation.diagnosis_metric?.status === 'not_measured'
     ? 'Not measured'
     : `Top-1 ${evaluation.diagnosis_metric?.top1?.correct ?? 0}/${evaluation.diagnosis_metric?.top1?.n ?? 0}`;
@@ -24,8 +32,56 @@ export default function AboutPage({ onHowItWorks, onOpenLibrary, onEnterWorkspac
   const interactionStatus = evaluation.interactions?.status || 'not measured';
   const runMode = evaluation.run_mode || 'unknown';
 
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+
+      mm.add('(prefers-reduced-motion: no-preference)', () => {
+        gsap.from('.info-hero h1, .info-hero .info-lead, .info-project-note', {
+          y: 26,
+          opacity: 0,
+          stagger: 0.08,
+          duration: 0.85,
+          ease: 'expo.out',
+        });
+
+        gsap.utils.toArray('.info-section').forEach((section) => {
+          gsap.from(section, {
+            y: 28,
+            opacity: 0,
+            duration: 0.8,
+            ease: 'expo.out',
+            scrollTrigger: {
+              trigger: section,
+              start: 'top 85%',
+              once: true,
+            },
+          });
+        });
+
+        gsap.utils.toArray('.info-principles').forEach((container) => {
+          gsap.from(container.querySelectorAll('.info-principle'), {
+            y: 24,
+            opacity: 0,
+            stagger: 0.08,
+            duration: 0.75,
+            ease: 'expo.out',
+            scrollTrigger: {
+              trigger: container,
+              start: 'top 85%',
+              once: true,
+            },
+          });
+        });
+      });
+
+      return () => mm.revert();
+    },
+    { scope: root }
+  );
+
   return (
-    <main className="info-page" aria-labelledby="about-heading">
+    <main className="info-page" aria-labelledby="about-heading" ref={root}>
       <header className="info-hero">
         <div className="info-eyebrow"><span className="info-marker" /> THE PROJECT / 01</div>
         <div className="info-hero-grid">
@@ -33,8 +89,8 @@ export default function AboutPage({ onHowItWorks, onOpenLibrary, onEnterWorkspac
             <h1 id="about-heading">Clinical knowledge.<br /><em>Traceable results.</em></h1>
             <p className="info-lead">MedGraph combines validated intake, structured graph lookups, and indexed sources while showing what the system did and did not find.</p>
             <div className="info-actions">
-              <button type="button" className="btn btn-primary" onClick={onEnterWorkspace}>Explore the workspace <ArrowRight size={15} /></button>
-              <a className="info-text-link" href="https://github.com/Akifali-1/MedGraph" target="_blank" rel="noopener noreferrer"><GitBranch size={15} /> View the project</a>
+              <button type="button" className="btn btn-primary" onClick={onEnterWorkspace} data-cursor="OPEN">Explore the workspace <ArrowRight size={15} /></button>
+              <a className="info-text-link" href="https://github.com/Akifali-1/MedGraph" target="_blank" rel="noopener noreferrer" data-cursor="OPEN"><GitBranch size={15} /> View the project</a>
             </div>
           </div>
           <aside className="info-project-note" aria-label="Project at a glance">
@@ -73,8 +129,8 @@ export default function AboutPage({ onHowItWorks, onOpenLibrary, onEnterWorkspac
           <p>Gemini is the default reasoning model when configured. SageMaker is used only when `SAGEMAKER_ENDPOINT_NAME` is set; it is currently unset. The ReAct route remains opt-in; the default `/diagnose` route is the DAG path.</p>
           <p>If no retrieved chunk passes the retrieval boundary, the response is `no_evidence`, diagnoses is empty, and the exact message is shown. Graph interaction results are still returned. If the graph cannot be reached, the interaction check is marked unavailable.</p>
           <div className="info-actions">
-            <button type="button" className="info-text-link" onClick={onHowItWorks}>Read a worked case <ArrowRight size={15} /></button>
-            <button type="button" className="info-text-link" onClick={onOpenLibrary}>Browse the evidence library <ArrowRight size={15} /></button>
+            <button type="button" className="info-text-link" onClick={onHowItWorks} data-cursor="OPEN">Read a worked case <ArrowRight size={15} /></button>
+            <button type="button" className="info-text-link" onClick={onOpenLibrary} data-cursor="OPEN">Browse the evidence library <ArrowRight size={15} /></button>
           </div>
         </div>
       </section>

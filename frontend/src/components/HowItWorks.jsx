@@ -60,6 +60,20 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
             .to(canon, { opacity: 1, duration: 0.3, ease: 'power2.out' }, '-=0.1');
         });
 
+        /* Margin notes: subtle scrubbed parallax */
+        gsap.utils.toArray('.doc-note').forEach((note) => {
+          gsap.to(note, {
+            y: -18,
+            ease: 'none',
+            scrollTrigger: {
+              trigger: note,
+              start: 'top bottom',
+              end: 'bottom top',
+              scrub: 0.8,
+            },
+          });
+        });
+
         /* Prose movements rise as they enter */
         gsap.utils.toArray('[data-rise]').forEach((el) => {
           gsap.from(el, {
@@ -164,8 +178,8 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
       <div className="doc-page">
         <aside className="doc-margin">
           <div className="doc-note doc-sticky">
-              <span className="doc-note-label">Names checked</span>
-              Everyday words are matched to the terms used by the graph.
+            <span className="doc-note-label">Names checked</span>
+            Everyday words are matched to the terms used by the graph.
             <cite>entity_linker.py</cite>
           </div>
         </aside>
@@ -322,15 +336,15 @@ export default function HowItWorks({ isLoggedIn, onEnterWorkspace, onLogin, onRe
             </p>
             <div className="doc-cta-row">
               {isLoggedIn ? (
-                <button className="doc-cta" onClick={onEnterWorkspace}>
+                <button className="doc-cta" data-cursor="LAUNCH" onClick={onEnterWorkspace}>
                   Enter the console <ArrowRight size={17} />
                 </button>
               ) : (
                 <>
-                  <button className="doc-cta" onClick={onLogin}>
+                  <button className="doc-cta" data-cursor="LAUNCH" onClick={onLogin}>
                     Enter the console <ArrowRight size={17} />
                   </button>
-                  <button className="doc-cta-secondary" onClick={onRegister}>
+                  <button className="doc-cta-secondary" data-cursor="LAUNCH" onClick={onRegister}>
                     Create an account
                   </button>
                 </>

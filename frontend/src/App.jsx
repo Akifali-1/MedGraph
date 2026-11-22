@@ -30,6 +30,9 @@ import {
 import './App.css';
 import './cinematic.css';
 import './document.css';
+import SmoothScrollProvider from './components/SmoothScrollProvider';
+import PageCurtain from './components/PageCurtain';
+import ClinicalCursor from './components/ClinicalCursor';
 import AuthView from './components/AuthView';
 import CinematicLanding from './components/CinematicLanding';
 import HowItWorks from './components/HowItWorks';
@@ -209,6 +212,20 @@ function App() {
 
   const [isGoogleSsoConfigured, setIsGoogleSsoConfigured] = useState(false);
   const roleRef = useRef(role);
+  const curtainRef = useRef(null);
+  const IMMERSIVE_VIEWS = ['landing', 'how', 'about', 'library', 'contact'];
+  const isImmersivePublic = IMMERSIVE_VIEWS.includes(view);
+
+  const navigatePublic = (nextView) => {
+    if (nextView === view) return;
+    if (curtainRef.current && IMMERSIVE_VIEWS.includes(nextView)) {
+      curtainRef.current.transition(PAGE_TITLES[nextView] || nextView, () => {
+        setView(nextView);
+      });
+    } else {
+      setView(nextView);
+    }
+  };
 
   useEffect(() => {
     roleRef.current = role;
@@ -1008,6 +1025,7 @@ function App() {
 
   return (
     <div className="app-container">
+      <PageCurtain ref={curtainRef} />
       {/* Ambient background glows */}
       <div className="ambient-glow-container">
         <div className="glow-orb-cyan"></div>
@@ -1016,26 +1034,47 @@ function App() {
 
       {/* Navigation Header */}
       <header className="navbar">
-        <div className="nav-brand" onClick={() => setView('landing')} style={{ cursor: 'pointer' }}>
+        <div className="nav-brand" onClick={() => navigatePublic('landing')} style={{ cursor: 'pointer' }}>
           <Activity className="nav-logo-icon" size={20} />
           <span>MedGraph AI <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)', background: 'var(--accent-soft)', border: '1px solid var(--panel-border)', padding: '2px 6px', borderRadius: '3px', marginLeft: '6px' }}>CDSS v2.4</span></span>
         </div>
         <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span
             className={`nav-link ${view === 'landing' ? 'active' : ''}`}
-            onClick={() => setView('landing')}
+            onClick={() => navigatePublic('landing')}
           >
             Overview
           </span>
           <span
             className={`nav-link ${view === 'how' ? 'active' : ''}`}
-            onClick={() => setView('how')}
+            onClick={() => navigatePublic('how')}
           >
             How it works
           </span>
-          <a href="#about" className={`nav-link page-navigation-link ${view === 'about' ? 'active' : ''}`} aria-current={view === 'about' ? 'page' : undefined}>About</a>
-          <a href="#library" className={`nav-link page-navigation-link ${view === 'library' ? 'active' : ''}`} aria-current={view === 'library' ? 'page' : undefined}>Evidence Library</a>
-          <a href="#contact" className={`nav-link page-navigation-link ${view === 'contact' ? 'active' : ''}`} aria-current={view === 'contact' ? 'page' : undefined}>Contact</a>
+          <a
+            href="#about"
+            className={`nav-link page-navigation-link ${view === 'about' ? 'active' : ''}`}
+            aria-current={view === 'about' ? 'page' : undefined}
+            onClick={(e) => { e.preventDefault(); navigatePublic('about'); }}
+          >
+            About
+          </a>
+          <a
+            href="#library"
+            className={`nav-link page-navigation-link ${view === 'library' ? 'active' : ''}`}
+            aria-current={view === 'library' ? 'page' : undefined}
+            onClick={(e) => { e.preventDefault(); navigatePublic('library'); }}
+          >
+            Evidence Library
+          </a>
+          <a
+            href="#contact"
+            className={`nav-link page-navigation-link ${view === 'contact' ? 'active' : ''}`}
+            aria-current={view === 'contact' ? 'page' : undefined}
+            onClick={(e) => { e.preventDefault(); navigatePublic('contact'); }}
+          >
+            Contact
+          </a>
           {isLoggedIn ? (
             <>
               {role === 'doctor' ? (
@@ -1089,39 +1128,44 @@ function App() {
         </nav>
       </header>
 
-      {/* Landing View */}
-      {view === 'landing' && (
-        <CinematicLanding
-          isLoggedIn={isLoggedIn}
-          onEnterWorkspace={() => setView('dashboard')}
-          onLogin={() => { setAuthMode('login'); setView('auth'); }}
-          onRegister={() => { setAuthMode('signup'); setView('auth'); }}
-          onHowItWorks={() => setView('how')}
-        />
+      {/* Immersive Public Views */}
+      {isImmersivePublic && (
+        <>
+          <ClinicalCursor />
+          <SmoothScrollProvider routeKey={view}>
+            {view === 'landing' && (
+              <CinematicLanding
+                isLoggedIn={isLoggedIn}
+                onEnterWorkspace={() => setView('dashboard')}
+                onLogin={() => { setAuthMode('login'); setView('auth'); }}
+                onRegister={() => { setAuthMode('signup'); setView('auth'); }}
+                onHowItWorks={() => navigatePublic('how')}
+              />
+            )}
+            {view === 'how' && (
+              <HowItWorks
+                isLoggedIn={isLoggedIn}
+                onEnterWorkspace={() => setView('dashboard')}
+                onLogin={() => { setAuthMode('login'); setView('auth'); }}
+                onRegister={() => { setAuthMode('signup'); setView('auth'); }}
+              />
+            )}
+            {view === 'about' && (
+              <AboutPage
+                onHowItWorks={() => navigatePublic('how')}
+                onOpenLibrary={() => navigatePublic('library')}
+                onEnterWorkspace={() => { setAuthMode('login'); setView(isLoggedIn ? 'dashboard' : 'auth'); }}
+              />
+            )}
+            {view === 'library' && (
+              <EvidenceLibraryPage
+                onEnterWorkspace={() => { setAuthMode('login'); setView(isLoggedIn ? 'dashboard' : 'auth'); }}
+              />
+            )}
+            {view === 'contact' && <ContactPage />}
+          </SmoothScrollProvider>
+        </>
       )}
-
-      {/* How MedGraph Works */}
-      {view === 'how' && (
-        <HowItWorks
-          isLoggedIn={isLoggedIn}
-          onEnterWorkspace={() => setView('dashboard')}
-          onLogin={() => { setAuthMode('login'); setView('auth'); }}
-          onRegister={() => { setAuthMode('signup'); setView('auth'); }}
-        />
-      )}
-
-      {/* Auth View */}
-      {view === 'about' && (
-        <AboutPage
-          onHowItWorks={() => setView('how')}
-          onOpenLibrary={() => setView('library')}
-          onEnterWorkspace={() => { setAuthMode('login'); setView(isLoggedIn ? 'dashboard' : 'auth'); }}
-        />
-      )}
-      {view === 'library' && (
-        <EvidenceLibraryPage onEnterWorkspace={() => { setAuthMode('login'); setView(isLoggedIn ? 'dashboard' : 'auth'); }} />
-      )}
-      {view === 'contact' && <ContactPage />}
 
       {/* Auth View */}
       {view === 'auth' && (

@@ -1,5 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useGSAP } from '@gsap/react';
 import { ArrowRight, BookOpen, ExternalLink, Search, X } from 'lucide-react';
+
+gsap.registerPlugin(ScrollTrigger, useGSAP);
 
 const SOURCES = [
   { id: 'chest-pain', type: 'Guidelines', publisher: 'AHA / ACC', year: '2021', title: 'Chest pain guidance', description: 'A reference for first steps when someone has acute or stable chest pain.', topics: ['Chest pain', 'Cardiology', 'ECG'], href: 'https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029' },
@@ -13,6 +18,7 @@ const SOURCES = [
 const FILTERS = ['All sources', 'Guidelines', 'Literature', 'Knowledge graph'];
 
 export default function EvidenceLibraryPage({ onEnterWorkspace }) {
+  const root = useRef(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All sources');
   const search = query.trim().toLowerCase();
@@ -23,12 +29,44 @@ export default function EvidenceLibraryPage({ onEnterWorkspace }) {
 
   const resetFilters = () => { setQuery(''); setFilter('All sources'); };
 
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+
+      mm.add('(prefers-reduced-motion: no-preference)', () => {
+        gsap.from('.info-hero h1, .info-hero .info-lead', {
+          y: 24,
+          opacity: 0,
+          stagger: 0.08,
+          duration: 0.8,
+          ease: 'expo.out',
+        });
+
+        gsap.from('.info-source-card', {
+          y: 24,
+          opacity: 0,
+          stagger: 0.07,
+          duration: 0.7,
+          ease: 'expo.out',
+          scrollTrigger: {
+            trigger: '.info-source-grid',
+            start: 'top 85%',
+            once: true,
+          },
+        });
+      });
+
+      return () => mm.revert();
+    },
+    { scope: root, dependencies: [filter, search] }
+  );
+
   return (
-    <main className="info-page" aria-labelledby="library-heading">
+    <main className="info-page" aria-labelledby="library-heading" ref={root}>
       <header className="info-hero info-hero-compact">
         <div className="info-eyebrow"><span className="info-marker" /> REFERENCE DESK / 02</div>
         <h1 id="library-heading">Go back to <em>the source.</em></h1>
-         <p className="info-lead">Browse the guidelines, papers, and structured data behind MedGraph.</p>
+        <p className="info-lead">Browse the guidelines, papers, and structured data behind MedGraph.</p>
       </header>
 
       <section className="info-library" aria-labelledby="sources-heading">
@@ -50,14 +88,14 @@ export default function EvidenceLibraryPage({ onEnterWorkspace }) {
         {sources.length ? (
           <div className="info-source-grid">
             {sources.map(source => (
-              <article className="info-source-card" key={source.id}>
+              <article className="info-source-card" key={source.id} data-cursor="SOURCE">
                 <div className="info-card-top"><span className="info-source-type">{source.type}</span><BookOpen size={18} strokeWidth={1.5} aria-hidden="true" /></div>
                 <h3>{source.title}</h3>
                 <p>{source.description}</p>
                 <div className="info-topic-list">{source.topics.map(topic => <span key={topic}>{topic}</span>)}</div>
                 <div className="info-source-footer">
                   <span>{source.publisher}<small>{source.year}</small></span>
-                  <a className="info-text-link" href={source.href} target="_blank" rel="noopener noreferrer" aria-label={`Open ${source.title} in a new tab`}>Open source <ExternalLink size={14} /></a>
+                  <a className="info-text-link" href={source.href} target="_blank" rel="noopener noreferrer" aria-label={`Open ${source.title} in a new tab`} data-cursor="OPEN">Open source <ExternalLink size={14} /></a>
                 </div>
               </article>
             ))}
@@ -66,15 +104,15 @@ export default function EvidenceLibraryPage({ onEnterWorkspace }) {
           <div className="info-no-results">
             <Search size={30} strokeWidth={1.3} aria-hidden="true" />
             <h3>No matching sources found.</h3>
-             <p>Try a broader topic such as “cardiology” or “medications”, or clear the filters.</p>
+            <p>Try a broader topic such as “cardiology” or “medications”, or clear the filters.</p>
             <button type="button" className="btn btn-secondary" onClick={resetFilters}>Clear search and filters</button>
           </div>
         )}
       </section>
 
       <aside className="info-callout">
-         <div><span className="info-eyebrow">ADD A SOURCE</span><h2>Bring your own <em>knowledge.</em></h2><p>Practitioners can add documents from the Uploads tab in the workspace.</p></div>
-        <button type="button" className="btn btn-primary" onClick={onEnterWorkspace}>Open workspace <ArrowRight size={15} /></button>
+        <div><span className="info-eyebrow">ADD A SOURCE</span><h2>Bring your own <em>knowledge.</em></h2><p>Practitioners can add documents from the Uploads tab in the workspace.</p></div>
+        <button type="button" className="btn btn-primary" onClick={onEnterWorkspace} data-cursor="OPEN">Open workspace <ArrowRight size={15} /></button>
       </aside>
       <p className="info-footnote">This is a curated reference catalog. These links are not patient-specific retrieval results, and listing a source does not mean the full publication is indexed in MedGraph.</p>
     </main>
